@@ -192,6 +192,9 @@ typedef struct hw_protocol_caps_response {
     uint8_t pio_sm_count;
     uint8_t reserved;
     uint8_t pin_map_count;
+    uint8_t reserved2;
+    uint8_t reserved3;
+    uint8_t reserved4;
     hw_protocol_pin_map_entry_t pin_map[];
 } hw_protocol_caps_response_t;
 
@@ -244,7 +247,8 @@ HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_set_fuzz_policy_t) == 12, "set_fuzz
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_queue_stimulus_t) == 8, "queue_stimulus fixed part must be 8 bytes");
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_arm_t) == 4, "arm payload must be 4 bytes");
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_status_t) == 20, "status payload must be 20 bytes");
-HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_caps_response_t) == 12, "caps response fixed part must be 12 bytes");
+HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_caps_response_t) == 16, "caps response fixed part must be 16 bytes");
+HW_PROTOCOL_STATIC_ASSERT(offsetof(hw_protocol_caps_response_t, pin_map) == 16, "caps response pin_map offset must be 16 bytes");
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_trace_decoded_t) == 12, "trace decoded fixed part must be 12 bytes");
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_fuzz_tx_t) == 12, "fuzz tx fixed part must be 12 bytes");
 HW_PROTOCOL_STATIC_ASSERT(sizeof(hw_protocol_arm_ok_t) == 4, "arm ok payload must be 4 bytes");

@@ -113,7 +113,7 @@ Payloady są serializowane w kolejności zapisanej poniżej. Firmware nie powinn
 | `QUEUE_STIMULUS` | `stimulus_id:u32`, `data_len:u16`, `stimulus_flags:u8`, `stimulus_kind:u8`, `data[]` |
 | `ARM` | `session_id:u16`, `arm_flags:u8`, `reserved:u8` |
 | `STATUS` | `rx_overruns:u32`, `tx_underruns:u32`, `armed_since_ms:u32`, `session_id:u16`, `last_error:u16`, `state:u8`, `flags:u8`, `queued_stimuli:u8`, `reserved:u8` |
-| `CAPS_RESPONSE` | `buffer_bytes:u32`, `max_burst_bytes:u16`, `fw_version:u8`, `protocol_version:u8`, `bus_mask:u8`, `supported_modes:u8`, `pio_sm_count:u8`, `reserved:u8`, `pin_map_count:u8`, `pin_map[]` |
+| `CAPS_RESPONSE` | `buffer_bytes:u32`, `max_burst_bytes:u16`, `fw_version:u8`, `protocol_version:u8`, `bus_mask:u8`, `supported_modes:u8`, `pio_sm_count:u8`, `reserved:u8`, `pin_map_count:u8`, `reserved2:u8`, `reserved3:u8`, `reserved4:u8`, `pin_map[]` |
 | `TRACE_DECODED` | `trace_seq:u32`, `timestamp_us:u32`, `data_len:u16`, `source_bus:u8`, `event_type:u8`, `data[]` |
 | `FUZZ_TX` | `stimulus_id:u32`, `trace_seq:u32`, `mode:u8`, `flags:u8`, `data_len:u16`, `data[]` |
 | `ARM_OK` | `session_id:u16`, `state:u8`, `reserved:u8` |
