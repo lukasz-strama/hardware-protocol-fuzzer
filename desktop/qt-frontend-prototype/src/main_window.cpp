@@ -1,5 +1,6 @@
 #include "main_window.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
@@ -12,6 +13,10 @@
 #include <QList>
 #include <QListView>
 #include <QMainWindow>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPalette>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSlider>
@@ -23,6 +28,60 @@
 #include <QVBoxLayout>
 
 namespace {
+
+class DropdownComboBox final : public QComboBox
+{
+public:
+    explicit DropdownComboBox(QWidget *parent = nullptr)
+        : QComboBox(parent)
+    {
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::StrongFocus);
+        setAttribute(Qt::WA_Hover, true);
+    }
+
+    QSize sizeHint() const override
+    {
+        QSize size = QComboBox::sizeHint();
+        size.setHeight(34);
+        return size;
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        const QRectF box = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const QColor border = hasFocus()
+            ? QColor("#2563eb")
+            : (underMouse() ? QColor("#93b4e8") : QColor("#c7d0dd"));
+        const QColor background = isEnabled() ? QColor("#ffffff") : QColor("#f8fafc");
+        const QColor text = isEnabled() ? QColor("#1d2430") : QColor("#98a2b3");
+
+        painter.setPen(QPen(border, 1));
+        painter.setBrush(background);
+        painter.drawRoundedRect(box, 5, 5);
+
+        const QRectF arrowArea(width() - 34, 0, 34, height());
+        painter.setPen(QPen(QColor("#d7dee8"), 1));
+        painter.drawLine(QPointF(arrowArea.left(), 7), QPointF(arrowArea.left(), height() - 7));
+
+        const qreal centerX = arrowArea.center().x();
+        const qreal centerY = arrowArea.center().y() + 1;
+        QPainterPath chevron;
+        chevron.moveTo(centerX - 5, centerY - 3);
+        chevron.lineTo(centerX, centerY + 2);
+        chevron.lineTo(centerX + 5, centerY - 3);
+        painter.setPen(QPen(text, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.drawPath(chevron);
+
+        const QRect textRect = rect().adjusted(10, 0, -40, 0);
+        painter.setPen(text);
+        painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, currentText());
+    }
+};
 
 QString eventStyle(const QString &event)
 {
@@ -163,7 +222,7 @@ QWidget *MainWindow::buildCentralWidget()
             font-weight: 800;
             color: #667085;
         }
-        QLineEdit, QComboBox {
+        QLineEdit {
             min-height: 32px;
             max-height: 32px;
             border: 1px solid #c7d0dd;
@@ -175,39 +234,27 @@ QWidget *MainWindow::buildCentralWidget()
             selection-color: #1d2430;
         }
         QComboBox {
-            padding: 4px 34px 4px 9px;
+            min-height: 34px;
+            max-height: 34px;
+            border: 0;
+            background: transparent;
+            padding: 0;
+            color: #1d2430;
         }
         QComboBox:disabled,
         QLineEdit:disabled {
             color: #98a2b3;
-            background: #f8fafc;
         }
-        QComboBox:hover,
-        QComboBox:focus,
         QLineEdit:focus {
             border-color: #93b4e8;
         }
-        QComboBox::drop-down {
-            subcontrol-origin: padding;
-            subcontrol-position: top right;
-            width: 30px;
-            border-left: 1px solid #d7dee8;
-            border-top-right-radius: 5px;
-            border-bottom-right-radius: 5px;
-            background: #f8fafc;
-        }
-        QComboBox::down-arrow {
-            image: url(:/icons/assets/chevron-down.svg);
-            width: 16px;
-            height: 16px;
-        }
         QComboBox QAbstractItemView {
             border: 1px solid #c7d0dd;
-            border-radius: 5px;
+            border-radius: 8px;
             background: #ffffff;
-            selection-background-color: #dbeafe;
+            selection-background-color: transparent;
             selection-color: #1d2430;
-            padding: 4px;
+            padding: 0;
             outline: 0;
         }
         QListView#comboPopup {
@@ -215,15 +262,15 @@ QWidget *MainWindow::buildCentralWidget()
             border-radius: 8px;
             background: #ffffff;
             color: #1d2430;
-            padding: 5px;
+            padding: 4px;
             outline: 0;
             selection-background-color: transparent;
             selection-color: #1d2430;
         }
         QListView#comboPopup::item {
-            min-height: 30px;
-            padding: 7px 10px;
-            margin: 1px 2px;
+            min-height: 28px;
+            padding: 6px 10px;
+            margin: 0;
             border-radius: 5px;
             color: #1d2430;
         }
@@ -299,32 +346,32 @@ QGroupBox *MainWindow::buildConnectionPanel()
     auto *layout = new QVBoxLayout(panel);
     layout->setSpacing(9);
 
-    protocolCombo_ = new QComboBox;
+    protocolCombo_ = new DropdownComboBox;
     protocolCombo_->addItems({"I2C", "UART"});
     configureComboBox(protocolCombo_);
 
-    portCombo_ = new QComboBox;
+    portCombo_ = new DropdownComboBox;
     portCombo_->addItems({"Mock Pico / USB CDC", "COM3", "/dev/ttyACM0", "/dev/cu.usbmodem1101"});
     configureComboBox(portCombo_);
 
-    baudrateCombo_ = new QComboBox;
+    baudrateCombo_ = new DropdownComboBox;
     baudrateCombo_->addItems({"115200", "230400", "460800", "921600", "1000000"});
     configureComboBox(baudrateCombo_);
 
-    parityCombo_ = new QComboBox;
+    parityCombo_ = new DropdownComboBox;
     parityCombo_->addItems({"None", "Even", "Odd"});
     configureComboBox(parityCombo_);
 
-    i2cSpeedCombo_ = new QComboBox;
+    i2cSpeedCombo_ = new DropdownComboBox;
     i2cSpeedCombo_->addItems({"100 kHz", "400 kHz", "1 MHz"});
     i2cSpeedCombo_->setCurrentText("400 kHz");
     configureComboBox(i2cSpeedCombo_);
 
-    pullupCombo_ = new QComboBox;
+    pullupCombo_ = new DropdownComboBox;
     pullupCombo_->addItems({"External", "None", "Internal test only"});
     configureComboBox(pullupCombo_);
 
-    vtargetCombo_ = new QComboBox;
+    vtargetCombo_ = new DropdownComboBox;
     vtargetCombo_->addItems({"3300 mV", "1800 mV", "5000 mV"});
     configureComboBox(vtargetCombo_);
 
@@ -403,11 +450,11 @@ QGroupBox *MainWindow::buildFuzzerPanel()
     auto *layout = new QVBoxLayout(panel);
     layout->setSpacing(9);
 
-    attackCombo_ = new QComboBox;
+    attackCombo_ = new DropdownComboBox;
     attackCombo_->addItems({"Address sweep", "Malformed length", "Repeated START", "Random bytes"});
     configureComboBox(attackCombo_);
 
-    selectionCombo_ = new QComboBox;
+    selectionCombo_ = new DropdownComboBox;
     selectionCombo_->addItems({"Sequential", "Random", "Corpus-guided"});
     configureComboBox(selectionCombo_);
 
@@ -488,15 +535,30 @@ void MainWindow::configureComboBox(QComboBox *comboBox)
 {
     auto *popup = new QListView(comboBox);
     popup->setObjectName("comboPopup");
+    popup->setAutoFillBackground(true);
     popup->setUniformItemSizes(true);
     popup->setMouseTracking(true);
     popup->setFrameShape(QFrame::NoFrame);
     popup->setEditTriggers(QAbstractItemView::NoEditTriggers);
     popup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     popup->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    popup->setSpacing(1);
+    popup->setSpacing(0);
+    popup->setContentsMargins(0, 0, 0, 0);
+    popup->viewport()->setAutoFillBackground(true);
+    popup->viewport()->setCursor(Qt::PointingHandCursor);
+    popup->viewport()->setStyleSheet("background: #ffffff;");
+
+    QPalette palette = popup->palette();
+    palette.setColor(QPalette::Base, QColor("#ffffff"));
+    palette.setColor(QPalette::Window, QColor("#ffffff"));
+    palette.setColor(QPalette::Text, QColor("#1d2430"));
+    palette.setColor(QPalette::HighlightedText, QColor("#1d2430"));
+    palette.setColor(QPalette::Highlight, QColor("#dbeafe"));
+    popup->setPalette(palette);
+    popup->viewport()->setPalette(palette);
 
     comboBox->setView(popup);
+    comboBox->setCursor(Qt::PointingHandCursor);
     comboBox->setMaxVisibleItems(8);
     comboBox->setMinimumContentsLength(12);
     comboBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
