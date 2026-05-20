@@ -122,6 +122,7 @@ QWidget *MainWindow::buildCentralWidget()
         QWidget {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             font-size: 13px;
+            color: #1d2430;
         }
         QWidget#centralRoot {
             background: #eef1f5;
@@ -139,6 +140,7 @@ QWidget *MainWindow::buildCentralWidget()
         QLabel#appTitle {
             font-size: 21px;
             font-weight: 800;
+            color: #1d2430;
         }
         QLabel[muted="true"] {
             color: #667085;
@@ -151,12 +153,14 @@ QWidget *MainWindow::buildCentralWidget()
         QGroupBox {
             margin-top: 18px;
             padding: 14px;
+            color: #667085;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             left: 12px;
             padding: 0 5px;
             font-weight: 800;
+            color: #667085;
         }
         QLineEdit, QComboBox {
             min-height: 32px;
@@ -165,9 +169,17 @@ QWidget *MainWindow::buildCentralWidget()
             border-radius: 5px;
             padding: 4px 7px;
             background: #ffffff;
+            color: #1d2430;
+            selection-background-color: #dbeafe;
+            selection-color: #1d2430;
         }
         QComboBox {
             padding: 4px 34px 4px 9px;
+        }
+        QComboBox:disabled,
+        QLineEdit:disabled {
+            color: #98a2b3;
+            background: #f8fafc;
         }
         QComboBox:hover,
         QComboBox:focus,
@@ -202,6 +214,7 @@ QWidget *MainWindow::buildCentralWidget()
             border: 1px solid #b9c4d2;
             border-radius: 6px;
             background: #ffffff;
+            color: #1d2430;
             padding: 4px 8px;
         }
         QPushButton:hover {
@@ -210,13 +223,17 @@ QWidget *MainWindow::buildCentralWidget()
         }
         QTableWidget {
             background: #ffffff;
+            color: #1d2430;
             border: 1px solid #d7dee8;
             border-radius: 6px;
             gridline-color: #e3e8ef;
             alternate-background-color: #f8fafc;
+            selection-background-color: #dbeafe;
+            selection-color: #1d2430;
         }
         QHeaderView::section {
             background: #f3f6fa;
+            color: #475467;
             border: 0;
             border-bottom: 1px solid #d7dee8;
             padding: 6px;
