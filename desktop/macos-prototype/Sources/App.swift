@@ -69,6 +69,16 @@ final class TraceTableDataSource: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 }
 
+private enum DeviceState {
+    case detached
+    case connected
+    case capabilitiesRead
+    case armed
+    case capturing
+    case fuzzing
+    case disarmed
+}
+
 final class MainViewController: NSViewController {
     private let dataSource = TraceTableDataSource()
     private let tableView = NSTableView()
@@ -105,6 +115,7 @@ final class MainViewController: NSViewController {
     private var txUnderruns = 0
     private var captureRunning = false
     private var fuzzRunning = false
+    private var deviceState: DeviceState = .detached
 
     override func loadView() {
         view = NSView()
@@ -438,18 +449,28 @@ final class MainViewController: NSViewController {
         sessionLabel.stringValue = "Session: 0x\(String(format: "%04X", sessionID))"
         countersLabel.stringValue = "RX overruns: \(rxOverruns)   TX underruns: \(txUnderruns)   queued: \(queuedStimuli)"
 
-        if fuzzRunning {
-            statusLabel.stringValue = "Running fuzz"
-            statusLabel.textColor = .systemPurple
-        } else if captureRunning {
+        switch deviceState {
+        case .detached:
+            statusLabel.stringValue = "Detached"
+            statusLabel.textColor = .secondaryLabelColor
+        case .connected:
+            statusLabel.stringValue = "Connected"
+            statusLabel.textColor = .systemBlue
+        case .capabilitiesRead:
+            statusLabel.stringValue = "Capabilities read"
+            statusLabel.textColor = .systemBlue
+        case .armed:
+            statusLabel.stringValue = queuedStimuli > 0 ? "Armed, stimuli queued" : "Armed mock session"
+            statusLabel.textColor = queuedStimuli > 0 ? .systemOrange : .systemBlue
+        case .capturing:
             statusLabel.stringValue = "Capturing"
             statusLabel.textColor = .systemGreen
-        } else if queuedStimuli > 0 {
-            statusLabel.stringValue = "Armed, stimuli queued"
-            statusLabel.textColor = .systemOrange
-        } else {
-            statusLabel.stringValue = "Armed mock session"
-            statusLabel.textColor = .systemBlue
+        case .fuzzing:
+            statusLabel.stringValue = "Running fuzz"
+            statusLabel.textColor = .systemPurple
+        case .disarmed:
+            statusLabel.stringValue = "Disarmed"
+            statusLabel.textColor = .secondaryLabelColor
         }
     }
 
@@ -486,19 +507,21 @@ final class MainViewController: NSViewController {
     }
 
     @objc private func connectTapped() {
-        statusLabel.stringValue = "Connected"
-        statusLabel.textColor = .systemBlue
+        deviceState = .connected
         append(record: TraceRecord(timestamp: "00:00.100", bus: "USB", event: "HELLO_ACK", data: "protocol=1 session=0x0042", note: "Mock Pico connected"))
         updateControls()
     }
 
     @objc private func capsTapped() {
+        deviceState = .capabilitiesRead
         append(record: TraceRecord(timestamp: "00:00.140", bus: "USB", event: "CAPS", data: "I2C UART PIO=8 BUF=128KiB", note: "Capabilities received"))
+        updateControls()
     }
 
     @objc private func armTapped() {
         captureRunning = false
         fuzzRunning = false
+        deviceState = .armed
         stopTimer()
         append(record: TraceRecord(timestamp: "00:00.180", bus: "USB", event: "ARM_OK", data: "state=ARMED", note: "Configuration validated"))
         updateControls()
@@ -507,6 +530,7 @@ final class MainViewController: NSViewController {
     @objc private func captureTapped() {
         captureRunning = true
         fuzzRunning = false
+        deviceState = .capturing
         append(record: TraceRecord(timestamp: "00:00.200", bus: "USB", event: "START", data: "START_CAPTURE", note: "Live capture mock started"))
         updateControls()
         startTimer()
@@ -515,6 +539,7 @@ final class MainViewController: NSViewController {
     @objc private func stopTapped() {
         captureRunning = false
         fuzzRunning = false
+        deviceState = .armed
         stopTimer()
         append(record: TraceRecord(timestamp: "00:00.260", bus: "USB", event: "STOP_OK", data: "drained=512", note: "Buffers drained, back to armed"))
         updateControls()
@@ -524,15 +549,17 @@ final class MainViewController: NSViewController {
         captureRunning = false
         fuzzRunning = false
         queuedStimuli = 0
+        deviceState = .disarmed
         stopTimer()
         append(record: TraceRecord(timestamp: "00:00.300", bus: "USB", event: "DISARM", data: "pins=HIGH-Z", note: "Safe state"))
-        statusLabel.stringValue = "Disarmed"
-        statusLabel.textColor = .secondaryLabelColor
         updateControls()
     }
 
     @objc private func queueTapped() {
         queuedStimuli = min(32, queuedStimuli + 1)
+        if deviceState != .fuzzing && deviceState != .capturing {
+            deviceState = .armed
+        }
         append(record: TraceRecord(timestamp: "00:00.320", bus: "USB", event: "QUEUE", data: stimulusField.stringValue, note: attackPopup.titleOfSelectedItem ?? "Stimulus queued"))
         updateControls()
     }
@@ -543,6 +570,7 @@ final class MainViewController: NSViewController {
         }
         captureRunning = false
         fuzzRunning = true
+        deviceState = .fuzzing
         append(record: TraceRecord(timestamp: "00:00.350", bus: "USB", event: "START", data: "START_FUZZ", note: "Fuzzer scheduler mock started"))
         updateControls()
         startTimer()
