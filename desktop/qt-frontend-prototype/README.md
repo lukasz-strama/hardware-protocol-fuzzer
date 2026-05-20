@@ -54,3 +54,44 @@ make
 5. Kliknij `Start Capture`, zeby zobaczyc dopisywane ramki.
 6. Kliknij `Queue Stimulus`, a potem `Start Fuzz`.
 7. Kliknij `Stop` albo `Disarm`.
+
+## Jak obslugiwac ekran
+
+Aplikacja dziala teraz w trybie `MOCK MODE`, czyli nie laczy sie jeszcze z prawdziwym Raspberry Pi Pico. Dane w tabeli sa symulowane lokalnie, zeby pokazac zachowanie frontendu przed gotowym firmware.
+
+Panel `Connection` sluzy do ustawienia parametrow polaczenia:
+
+- `Protocol`: wybor `I2C` albo `UART`,
+- `Port`: docelowo port urzadzenia, teraz mock,
+- `UART baud` i `Parity`: parametry UART,
+- `I2C speed` i `I2C addr`: parametry I2C,
+- `SDA / TX`, `SCL / RX`: piny magistrali,
+- `Pull-up` i `Vtarget`: ustawienia celu,
+- `Session log`: log komend sesji, np. `HELLO`, `GET_CAPS`, `ARM`, `STOP`.
+
+Panel `Captured Frames` pokazuje symulowane rekordy trace. Kolumny oznaczaja:
+
+- `Seq`: numer rekordu,
+- `Time`: znacznik czasu,
+- `Bus`: `I2C` albo `UART`,
+- `Event`: typ zdarzenia, np. `BYTE`, `START`, `STOP`, `ACK`, `NACK`, `BREAK`, `FUZZ_TX`, `OVERFLOW`,
+- `Len`: liczba bajtow danych,
+- `Data`: dane w hex,
+- `Decoded`: opis zdekodowanego zdarzenia.
+
+Panel `Fuzzer Control` sluzy do ustawienia mockowanej polityki fuzzera:
+
+- `Attack`: typ scenariusza,
+- `Selection`: sposob wyboru bodzcow,
+- `Stimulus`: bajty bodzca,
+- `Repeats`, `Budget`, `Frequency`: podstawowe limity wykonania,
+- `Queue Stimulus`: dodaje bodziec do kolejki,
+- `Start Fuzz`: uruchamia symulowany fuzzing.
+
+## Blokowanie przyciskow wedlug stanu
+
+- Na poczatku dziala tylko `Connect`.
+- Po `Connect` dziala `Get Caps`.
+- Po `Get Caps` dziala `Arm`.
+- Po `Arm` dzialaja `Start Capture`, `Queue Stimulus`, `Start Fuzz`, `Disarm`.
+- Podczas capture/fuzz dziala glownie `Stop`, a konfiguracja jest zablokowana.
