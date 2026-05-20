@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hardware Protocol Fuzzer - Desktop Frontend</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Hardware Protocol Fuzzer</h1>
+          <p>Cross-platform frontend prototype</p>
+        </div>
+        <div class="status-strip" aria-live="polite">
+          <span id="sessionState" class="state-pill state-detached">Detached</span>
+          <span id="sessionId">Session: -</span>
+          <span id="frameCount">Frames: 0</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="panel config-panel">
+          <div class="panel-head">
+            <h2>Connection</h2>
+            <span id="transportLabel">Mock USB</span>
+          </div>
+
+          <label class="field">
+            <span>Protocol</span>
+            <select id="protocol">
+              <option value="I2C">I2C</option>
+              <option value="UART">UART</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Port</span>
+            <select id="port">
+              <option>Mock Pico / USB CDC</option>
+              <option>COM3</option>
+              <option>/dev/ttyACM0</option>
+              <option>/dev/cu.usbmodem1101</option>
+            </select>
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>I2C speed</span>
+              <select id="i2cSpeed">
+                <option>100 kHz</option>
+                <option selected>400 kHz</option>
+                <option>1 MHz</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>I2C addr</span>
+              <input id="i2cAddress" value="0x48" spellcheck="false">
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Baudrate</span>
+              <select id="baudrate">
+                <option>115200</option>
+                <option>230400</option>
+                <option>460800</option>
+                <option>921600</option>
+                <option>1000000</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Parity</span>
+              <select id="parity">
+                <option>None</option>
+                <option>Even</option>
+                <option>Odd</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>SDA / TX</span>
+              <input id="pinA" value="4" inputmode="numeric">
+            </label>
+            <label class="field">
+              <span>SCL / RX</span>
+              <input id="pinB" value="5" inputmode="numeric">
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Pull-up</span>
+              <select id="pullup">
+                <option>External</option>
+                <option>None</option>
+                <option>Internal test only</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Vtarget</span>
+              <select id="vtarget">
+                <option>3300 mV</option>
+                <option>1800 mV</option>
+                <option>5000 mV</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="button-grid">
+            <button id="connectBtn" type="button">Connect</button>
+            <button id="capsBtn" type="button">Get Caps</button>
+            <button id="armBtn" type="button">Arm</button>
+            <button id="captureBtn" type="button">Start Capture</button>
+            <button id="stopBtn" type="button">Stop</button>
+            <button id="disarmBtn" type="button">Disarm</button>
+          </div>
+        </aside>
+
+        <section class="panel trace-panel">
+          <div class="panel-head trace-head">
+            <div>
+              <h2>Captured Frames</h2>
+              <span id="traceSubtitle">TRACE_DECODED stream</span>
+            </div>
+            <div class="trace-actions">
+              <input id="traceFilter" placeholder="Filter event/data" spellcheck="false">
+              <button id="demoFrameBtn" type="button">Add Frame</button>
+              <button id="clearBtn" type="button">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Bus</th>
+                  <th>Event</th>
+                  <th>Data</th>
+                  <th>Decoded</th>
+                </tr>
+              </thead>
+              <tbody id="traceBody"></tbody>
+            </table>
+          </div>
+
+          <div class="timeline" aria-label="Frame timeline">
+            <div id="timelineBar"></div>
+          </div>
+        </section>
+
+        <aside class="panel fuzzer-panel">
+          <div class="panel-head">
+            <h2>Fuzzer</h2>
+            <span id="queueState">Queued: 0</span>
+          </div>
+
+          <label class="field">
+            <span>Attack</span>
+            <select id="attackType">
+              <option>Address sweep</option>
+              <option>Malformed length</option>
+              <option>Repeated START</option>
+              <option>Random bytes</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Selection</span>
+            <select id="selectionMode">
+              <option>Sequential</option>
+              <option>Random</option>
+              <option>Corpus-guided</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Stimulus bytes</span>
+            <input id="stimulusBytes" value="A0 00 FF 13 37" spellcheck="false">
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Repeats</span>
+              <input id="repeats" value="25" inputmode="numeric">
+            </label>
+            <label class="field">
+              <span>Budget</span>
+              <input id="budget" value="5000 ms" spellcheck="false">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Frequency <b id="frequencyLabel">10 Hz</b></span>
+            <input id="frequency" type="range" min="1" max="100" value="10">
+          </label>
+
+          <div class="button-grid">
+            <button id="queueBtn" type="button">Queue Stimulus</button>
+            <button id="fuzzBtn" type="button">Start Fuzz</button>
+          </div>
+
+          <div class="metrics">
+            <div>
+              <span>RX overruns</span>
+              <strong id="rxOverruns">0</strong>
+            </div>
+            <div>
+              <span>TX underruns</span>
+              <strong id="txUnderruns">0</strong>
+            </div>
+            <div>
+              <span>Max pending</span>
+              <strong>32</strong>
+            </div>
+            <div>
+              <span>Stimulus cap</span>
+              <strong>4096 B</strong>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
