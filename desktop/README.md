@@ -1,11 +1,13 @@
 # Desktop Frontend
 
-Domyslne demo do prezentacji jest w:
+Glowna wersja desktopowa jest w:
 
 ```text
-desktop/cross-platform-prototype/index.html
+desktop/qt-frontend-prototype
 ```
 
-To statyczna aplikacja webowa, wiec dziala na Windows, Linux i macOS w zwyklej przegladarce.
+To prototyp C++/Qt Widgets z konfiguracja I2C/UART, tabela ramek i panelem fuzzera. Instrukcja budowania jest w `desktop/qt-frontend-prototype/README.md`.
 
-Katalog `macos-prototype` zostaje jako opcjonalny natywny eksperyment AppKit dla macOS, ale nie jest glowna sciezka prezentacyjna.
+Katalog `cross-platform-prototype` zostaje jako awaryjna wersja statyczna do otwarcia w przegladarce, gdy nie ma dostepnego Qt toolchaina.
+
+Katalog `macos-prototype` jest tylko opcjonalnym eksperymentem AppKit dla macOS.
