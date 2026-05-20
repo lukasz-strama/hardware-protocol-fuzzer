@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QList>
 #include <QListView>
+#include <QListWidget>
 #include <QMainWindow>
 #include <QPaintEvent>
 #include <QPainter>
@@ -130,7 +131,6 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    seedTrace();
     updateStatus();
 }
 
@@ -335,6 +335,18 @@ QWidget *MainWindow::buildCentralWidget()
             padding: 6px;
             font-weight: 800;
         }
+        QListWidget#sessionLog {
+            min-height: 92px;
+            border: 1px solid #d7dee8;
+            border-radius: 6px;
+            background: #f8fafc;
+            color: #475467;
+            padding: 4px;
+        }
+        QListWidget#sessionLog::item {
+            min-height: 22px;
+            padding: 2px 4px;
+        }
     )");
 
     return root;
@@ -397,6 +409,14 @@ QGroupBox *MainWindow::buildConnectionPanel()
     auto *stopButton = new QPushButton("Stop");
     auto *disarmButton = new QPushButton("Disarm");
     layout->addWidget(buttonRow({connectButton, capsButton, armButton, captureButton, stopButton, disarmButton}));
+
+    layout->addSpacing(4);
+    layout->addWidget(smallLabel("Session log"));
+    sessionLog_ = new QListWidget;
+    sessionLog_->setObjectName("sessionLog");
+    sessionLog_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sessionLog_->addItem("Mock transport idle");
+    layout->addWidget(sessionLog_);
 
     layout->addStretch(1);
     layout->addWidget(smallLabel("Frame: 16 B header + payload, CRC-16/CCITT-FALSE"));
@@ -571,28 +591,32 @@ void MainWindow::setupTraceTable()
     traceTable_->setAlternatingRowColors(true);
     traceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     traceTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    traceTable_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     traceTable_->verticalHeader()->setVisible(false);
-    traceTable_->horizontalHeader()->setStretchLastSection(true);
+    traceTable_->horizontalHeader()->setStretchLastSection(false);
     traceTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     traceTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     traceTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    traceTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
-    traceTable_->setColumnWidth(3, 220);
-}
-
-void MainWindow::seedTrace()
-{
-    addTraceRecord({"00:00.000", "I2C", "START", "", "Bus idle -> transaction"});
-    addTraceRecord({"00:00.014", "I2C", "BYTE", "0x90", "Address 0x48 write"});
-    addTraceRecord({"00:00.021", "I2C", "ACK", "", "Target acknowledged"});
-    addTraceRecord({"00:00.036", "I2C", "BYTE", "0x00 0x7F", "Register payload"});
-    addTraceRecord({"00:00.051", "I2C", "STOP", "", "Transaction complete"});
+    traceTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    traceTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
 }
 
 void MainWindow::addTraceRecord(const TraceRecord &record)
 {
     traceRecords_.append(record);
     renderTraceTable();
+}
+
+void MainWindow::addSessionLog(const QString &message)
+{
+    if (!sessionLog_) {
+        return;
+    }
+
+    sessionLog_->addItem(QString("%1  %2")
+        .arg(QDateTime::currentDateTime().toString("HH:mm:ss"))
+        .arg(message));
+    sessionLog_->scrollToBottom();
 }
 
 void MainWindow::renderTraceTable()
@@ -777,32 +801,28 @@ void MainWindow::connectDevice()
     stopTimer();
     sessionId_ = 0x42;
     setDeviceState(DeviceState::Connected);
-    addTraceRecord({"00:00.100", "USB", "HELLO_ACK", "protocol=1 session=0x0042", "Mock Pico connected"});
+    addSessionLog("HELLO -> HELLO_ACK, session=0x0042");
 }
 
 void MainWindow::readCapabilities()
 {
     setDeviceState(DeviceState::CapabilitiesRead);
-    addTraceRecord({"00:00.140", "USB", "CAPS", "I2C UART PIO=8 BUF=128KiB", "Capabilities received"});
+    addSessionLog("GET_CAPS -> CAPS_RESPONSE, I2C/UART, PIO=8");
 }
 
 void MainWindow::armDevice()
 {
     stopTimer();
     setDeviceState(DeviceState::Armed);
-    addTraceRecord({
-        "00:00.180",
-        "USB",
-        "ARM_OK",
-        QString("pins=%1/%2 vtarget=%3").arg(pinAEdit_->text(), pinBEdit_->text(), vtargetCombo_->currentText()),
-        "Configuration validated"
-    });
+    addSessionLog(QString("SET_BUS + SET_TARGET -> ARM_OK, pins=%1/%2, vtarget=%3")
+        .arg(pinAEdit_->text(), pinBEdit_->text(), vtargetCombo_->currentText()));
 }
 
 void MainWindow::startCapture()
 {
     setDeviceState(DeviceState::Capturing);
-    addTraceRecord({currentTimestamp(), selectedBus(), "START", "START_CAPTURE", "Live capture mock started"});
+    addSessionLog("START_CAPTURE, mock TRACE_DECODED stream active");
+    addGeneratedCaptureFrame();
     startTimerForMode("capture");
 }
 
@@ -810,7 +830,7 @@ void MainWindow::stopActivity()
 {
     stopTimer();
     setDeviceState(DeviceState::Armed);
-    addTraceRecord({currentTimestamp(), "USB", "STOP_OK", "drained=512", "Buffers drained, back to armed"});
+    addSessionLog("STOP -> STOP_OK, drained=512");
 }
 
 void MainWindow::disarmDevice()
@@ -818,7 +838,7 @@ void MainWindow::disarmDevice()
     stopTimer();
     queuedStimuli_ = 0;
     setDeviceState(DeviceState::Disarmed);
-    addTraceRecord({currentTimestamp(), "USB", "DISARM", "pins=HIGH-Z", "Safe state"});
+    addSessionLog("DISARM, pins=HIGH-Z");
 }
 
 void MainWindow::queueStimulus()
@@ -827,7 +847,8 @@ void MainWindow::queueStimulus()
     if (deviceState_ != DeviceState::Capturing && deviceState_ != DeviceState::Fuzzing) {
         setDeviceState(DeviceState::Armed);
     }
-    addTraceRecord({"00:00.320", "USB", "QUEUE", stimulusEdit_->text(), QString("%1 stimulus queued").arg(attackCombo_->currentText())});
+    addSessionLog(QString("QUEUE_STIMULUS, %1, bytes=%2")
+        .arg(attackCombo_->currentText(), stimulusEdit_->text()));
 }
 
 void MainWindow::startFuzz()
@@ -836,7 +857,8 @@ void MainWindow::startFuzz()
         queueStimulus();
     }
     setDeviceState(DeviceState::Fuzzing);
-    addTraceRecord({currentTimestamp(), selectedBus(), "START", "START_FUZZ", "Fuzzer scheduler mock started"});
+    addSessionLog("START_FUZZ, FUZZ_TX events will be correlated with trace");
+    addGeneratedFuzzFrame();
     startTimerForMode("fuzz");
 }
 

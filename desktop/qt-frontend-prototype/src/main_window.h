@@ -8,6 +8,7 @@ class QComboBox;
 class QGroupBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QSlider;
 class QTableWidget;
@@ -61,7 +62,7 @@ private:
     QWidget *buttonRow(const QList<QPushButton *> &buttons);
     void configureComboBox(QComboBox *comboBox);
     void setupTraceTable();
-    void seedTrace();
+    void addSessionLog(const QString &message);
     void addTraceRecord(const TraceRecord &record);
     void renderTraceTable();
     void setDeviceState(DeviceState nextState);
@@ -97,6 +98,7 @@ private:
     QLineEdit *repeatEdit_ = nullptr;
     QLineEdit *budgetEdit_ = nullptr;
     QLineEdit *filterEdit_ = nullptr;
+    QListWidget *sessionLog_ = nullptr;
     QSlider *frequencySlider_ = nullptr;
     QTableWidget *traceTable_ = nullptr;
     QTimer *timer_ = nullptr;
