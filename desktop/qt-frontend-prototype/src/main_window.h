@@ -59,6 +59,7 @@ private:
     QGroupBox *buildFuzzerPanel();
     QWidget *formRow(const QString &labelText, QWidget *field);
     QWidget *buttonRow(const QList<QPushButton *> &buttons);
+    void configureComboBox(QComboBox *comboBox);
     void setupTraceTable();
     void seedTrace();
     void addTraceRecord(const TraceRecord &record);

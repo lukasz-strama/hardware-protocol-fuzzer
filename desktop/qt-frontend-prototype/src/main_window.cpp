@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
+#include <QListView>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -209,6 +210,54 @@ QWidget *MainWindow::buildCentralWidget()
             padding: 4px;
             outline: 0;
         }
+        QListView#comboPopup {
+            border: 1px solid #c7d0dd;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #1d2430;
+            padding: 5px;
+            outline: 0;
+            selection-background-color: transparent;
+            selection-color: #1d2430;
+        }
+        QListView#comboPopup::item {
+            min-height: 30px;
+            padding: 7px 10px;
+            margin: 1px 2px;
+            border-radius: 5px;
+            color: #1d2430;
+        }
+        QListView#comboPopup::item:hover {
+            background: #f1f5f9;
+        }
+        QListView#comboPopup::item:selected {
+            background: #dbeafe;
+            color: #1d2430;
+            font-weight: 700;
+        }
+        QListView#comboPopup::item:selected:hover {
+            background: #c7ddff;
+        }
+        QScrollBar:vertical {
+            width: 10px;
+            margin: 4px 2px 4px 0;
+            background: transparent;
+        }
+        QScrollBar::handle:vertical {
+            min-height: 28px;
+            border-radius: 5px;
+            background: #c7d0dd;
+        }
+        QScrollBar::handle:vertical:hover {
+            background: #98a2b3;
+        }
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical,
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {
+            height: 0;
+            background: transparent;
+        }
         QPushButton {
             min-height: 30px;
             border: 1px solid #b9c4d2;
@@ -252,25 +301,32 @@ QGroupBox *MainWindow::buildConnectionPanel()
 
     protocolCombo_ = new QComboBox;
     protocolCombo_->addItems({"I2C", "UART"});
+    configureComboBox(protocolCombo_);
 
     portCombo_ = new QComboBox;
     portCombo_->addItems({"Mock Pico / USB CDC", "COM3", "/dev/ttyACM0", "/dev/cu.usbmodem1101"});
+    configureComboBox(portCombo_);
 
     baudrateCombo_ = new QComboBox;
     baudrateCombo_->addItems({"115200", "230400", "460800", "921600", "1000000"});
+    configureComboBox(baudrateCombo_);
 
     parityCombo_ = new QComboBox;
     parityCombo_->addItems({"None", "Even", "Odd"});
+    configureComboBox(parityCombo_);
 
     i2cSpeedCombo_ = new QComboBox;
     i2cSpeedCombo_->addItems({"100 kHz", "400 kHz", "1 MHz"});
     i2cSpeedCombo_->setCurrentText("400 kHz");
+    configureComboBox(i2cSpeedCombo_);
 
     pullupCombo_ = new QComboBox;
     pullupCombo_->addItems({"External", "None", "Internal test only"});
+    configureComboBox(pullupCombo_);
 
     vtargetCombo_ = new QComboBox;
     vtargetCombo_->addItems({"3300 mV", "1800 mV", "5000 mV"});
+    configureComboBox(vtargetCombo_);
 
     i2cAddressEdit_ = new QLineEdit("0x48");
     pinAEdit_ = new QLineEdit("4");
@@ -349,9 +405,11 @@ QGroupBox *MainWindow::buildFuzzerPanel()
 
     attackCombo_ = new QComboBox;
     attackCombo_->addItems({"Address sweep", "Malformed length", "Repeated START", "Random bytes"});
+    configureComboBox(attackCombo_);
 
     selectionCombo_ = new QComboBox;
     selectionCombo_->addItems({"Sequential", "Random", "Corpus-guided"});
+    configureComboBox(selectionCombo_);
 
     stimulusEdit_ = new QLineEdit("A0 00 FF 13 37");
     repeatEdit_ = new QLineEdit("25");
@@ -424,6 +482,24 @@ QWidget *MainWindow::buttonRow(const QList<QPushButton *> &buttons)
     }
 
     return container;
+}
+
+void MainWindow::configureComboBox(QComboBox *comboBox)
+{
+    auto *popup = new QListView(comboBox);
+    popup->setObjectName("comboPopup");
+    popup->setUniformItemSizes(true);
+    popup->setMouseTracking(true);
+    popup->setFrameShape(QFrame::NoFrame);
+    popup->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    popup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    popup->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    popup->setSpacing(1);
+
+    comboBox->setView(popup);
+    comboBox->setMaxVisibleItems(8);
+    comboBox->setMinimumContentsLength(12);
+    comboBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
 }
 
 void MainWindow::setupTraceTable()
