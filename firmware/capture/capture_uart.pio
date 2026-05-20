@@ -1,0 +1,30 @@
+.program uart_sniffer
+
+    ; Program nie używa side-set, więc usuwamy deklarację .side_set dla czystości
+
+public start:
+wait_start:
+    wait 0 pin 0        ; Czekaj na zbocze opadające (Start Bit)
+    
+    ; Chcemy trafić idealnie w środek bitu START, czyli odczekać 4 cykle.
+    ; Instrukcja 'wait' zabiera 1 cykl, więc dodajemy opóźnienie 3 cykli:
+    nop [2]             ; 1 (wait) + 1 (nop) + 2 (delay) = 4 cykle od początku bitu
+
+    ; Teraz przeskakujemy o 8 cykli do przodu, aby znaleźć się w środku bitu 0:
+    nop [7]             ; Odczekaj cały bit START, lądujemy w środku Bit 0
+
+    set x, 7            ; Będziemy odbierać 8 bitów danych (od 7 do 0)
+
+bitloop:
+    in pins, 1          ; Pobierz 1 bit ze środka linii (1 cykl)
+    jmp x-- bitloop [6] ; Jeśli x > 0, zmniejsz x i czekaj 7 cykli (1 + 1 + 6 = 8 cykli między bitami)
+
+    ; W tym miejscu sprzętowy AUTOPUSH (skonfigurowany w pliku .c) 
+    ; automatycznie wypycha cały uzbierany bajt do FIFO, gdy licznik osiągnie 8 bitów.
+
+    ; Na koniec musimy odczekać na środek bitu STOP (kolejne 8 cykli), 
+    ; aby upewnić się, że nie zaczniemy szukać kolejnego bitu START zbyt wcześnie:
+    nop [7]             
+
+    ; Wracamy do oczekiwania na kolejną ramkę UART
+    jmp wait_start
