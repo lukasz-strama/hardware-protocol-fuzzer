@@ -11,3 +11,6 @@ SOURCES += \
 
 HEADERS += \
     src/main_window.h
+
+RESOURCES += \
+    resources.qrc

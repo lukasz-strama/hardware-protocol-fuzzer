@@ -77,6 +77,7 @@ MainWindow::MainWindow(QWidget *parent)
 QWidget *MainWindow::buildCentralWidget()
 {
     auto *root = new QWidget;
+    root->setObjectName("centralRoot");
     auto *rootLayout = new QVBoxLayout(root);
     rootLayout->setContentsMargins(14, 14, 14, 14);
     rootLayout->setSpacing(12);
@@ -122,9 +123,13 @@ QWidget *MainWindow::buildCentralWidget()
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             font-size: 13px;
         }
-        QMainWindow, QWidget {
+        QWidget#centralRoot {
             background: #eef1f5;
             color: #1d2430;
+        }
+        QGroupBox QWidget,
+        QGroupBox QLabel {
+            background: transparent;
         }
         QFrame#header, QGroupBox {
             background: #ffffff;
@@ -154,11 +159,43 @@ QWidget *MainWindow::buildCentralWidget()
             font-weight: 800;
         }
         QLineEdit, QComboBox {
-            min-height: 28px;
+            min-height: 32px;
+            max-height: 32px;
             border: 1px solid #c7d0dd;
             border-radius: 5px;
             padding: 4px 7px;
             background: #ffffff;
+        }
+        QComboBox {
+            padding: 4px 34px 4px 9px;
+        }
+        QComboBox:hover,
+        QComboBox:focus,
+        QLineEdit:focus {
+            border-color: #93b4e8;
+        }
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 30px;
+            border-left: 1px solid #d7dee8;
+            border-top-right-radius: 5px;
+            border-bottom-right-radius: 5px;
+            background: #f8fafc;
+        }
+        QComboBox::down-arrow {
+            image: url(:/icons/assets/chevron-down.svg);
+            width: 16px;
+            height: 16px;
+        }
+        QComboBox QAbstractItemView {
+            border: 1px solid #c7d0dd;
+            border-radius: 5px;
+            background: #ffffff;
+            selection-background-color: #dbeafe;
+            selection-color: #1d2430;
+            padding: 4px;
+            outline: 0;
         }
         QPushButton {
             min-height: 30px;
@@ -345,7 +382,13 @@ QWidget *MainWindow::formRow(const QString &labelText, QWidget *field)
 
     auto *label = smallLabel(labelText);
     label->setMinimumWidth(82);
+    label->setFixedHeight(32);
+    label->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     field->setMinimumWidth(150);
+    if (qobject_cast<QComboBox *>(field) || qobject_cast<QLineEdit *>(field)) {
+        field->setFixedHeight(32);
+        field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
 
     layout->addWidget(label);
     layout->addWidget(field, 1);

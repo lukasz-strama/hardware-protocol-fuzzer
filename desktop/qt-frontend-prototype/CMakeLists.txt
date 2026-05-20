@@ -9,6 +9,7 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 qt_add_executable(HardwareProtocolFuzzerDesktop
+    resources.qrc
     src/main.cpp
     src/main_window.cpp
     src/main_window.h
