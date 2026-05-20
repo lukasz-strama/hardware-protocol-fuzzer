@@ -176,6 +176,12 @@ QWidget *MainWindow::buildCentralWidget()
     splitter->setSizes({310, 620, 310});
 
     rootLayout->addWidget(header);
+
+    auto *mockBanner = new QLabel("MOCK MODE - simulated protocol traffic, no hardware connected");
+    mockBanner->setObjectName("mockBanner");
+    mockBanner->setAlignment(Qt::AlignCenter);
+    rootLayout->addWidget(mockBanner);
+
     rootLayout->addWidget(splitter, 1);
 
     root->setStyleSheet(R"(
@@ -208,6 +214,14 @@ QWidget *MainWindow::buildCentralWidget()
         QLabel#stateLabel {
             border-radius: 12px;
             padding: 4px 10px;
+            font-weight: 800;
+        }
+        QLabel#mockBanner {
+            min-height: 34px;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            background: #fffbeb;
+            color: #92400e;
             font-weight: 800;
         }
         QGroupBox {
@@ -402,13 +416,13 @@ QGroupBox *MainWindow::buildConnectionPanel()
     layout->addWidget(formRow("Pull-up", pullupCombo_));
     layout->addWidget(formRow("Vtarget", vtargetCombo_));
 
-    auto *connectButton = new QPushButton("Connect");
-    auto *capsButton = new QPushButton("Get Caps");
-    auto *armButton = new QPushButton("Arm");
-    auto *captureButton = new QPushButton("Start Capture");
-    auto *stopButton = new QPushButton("Stop");
-    auto *disarmButton = new QPushButton("Disarm");
-    layout->addWidget(buttonRow({connectButton, capsButton, armButton, captureButton, stopButton, disarmButton}));
+    connectButton_ = new QPushButton("Connect");
+    capsButton_ = new QPushButton("Get Caps");
+    armButton_ = new QPushButton("Arm");
+    captureButton_ = new QPushButton("Start Capture");
+    stopButton_ = new QPushButton("Stop");
+    disarmButton_ = new QPushButton("Disarm");
+    layout->addWidget(buttonRow({connectButton_, capsButton_, armButton_, captureButton_, stopButton_, disarmButton_}));
 
     layout->addSpacing(4);
     layout->addWidget(smallLabel("Session log"));
@@ -422,12 +436,12 @@ QGroupBox *MainWindow::buildConnectionPanel()
     layout->addWidget(smallLabel("Frame: 16 B header + payload, CRC-16/CCITT-FALSE"));
     layout->addWidget(smallLabel("Safety: active pins are disabled before ARM"));
 
-    connect(connectButton, &QPushButton::clicked, this, &MainWindow::connectDevice);
-    connect(capsButton, &QPushButton::clicked, this, &MainWindow::readCapabilities);
-    connect(armButton, &QPushButton::clicked, this, &MainWindow::armDevice);
-    connect(captureButton, &QPushButton::clicked, this, &MainWindow::startCapture);
-    connect(stopButton, &QPushButton::clicked, this, &MainWindow::stopActivity);
-    connect(disarmButton, &QPushButton::clicked, this, &MainWindow::disarmDevice);
+    connect(connectButton_, &QPushButton::clicked, this, &MainWindow::connectDevice);
+    connect(capsButton_, &QPushButton::clicked, this, &MainWindow::readCapabilities);
+    connect(armButton_, &QPushButton::clicked, this, &MainWindow::armDevice);
+    connect(captureButton_, &QPushButton::clicked, this, &MainWindow::startCapture);
+    connect(stopButton_, &QPushButton::clicked, this, &MainWindow::stopActivity);
+    connect(disarmButton_, &QPushButton::clicked, this, &MainWindow::disarmDevice);
 
     return panel;
 }
@@ -446,10 +460,10 @@ QGroupBox *MainWindow::buildTracePanel()
     filterEdit_->setPlaceholderText("Filter event/data");
     filterEdit_->setClearButtonEnabled(true);
 
-    auto *addButton = new QPushButton("Add Frame");
+    addDemoFrameButton_ = new QPushButton("Add Mock Frame");
     auto *clearButton = new QPushButton("Clear");
     toolbar->addWidget(filterEdit_);
-    toolbar->addWidget(addButton);
+    toolbar->addWidget(addDemoFrameButton_);
     toolbar->addWidget(clearButton);
 
     setupTraceTable();
@@ -457,7 +471,7 @@ QGroupBox *MainWindow::buildTracePanel()
     layout->addLayout(toolbar);
     layout->addWidget(traceTable_, 1);
 
-    connect(addButton, &QPushButton::clicked, this, &MainWindow::addDemoFrame);
+    connect(addDemoFrameButton_, &QPushButton::clicked, this, &MainWindow::addDemoFrame);
     connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearTrace);
     connect(filterEdit_, &QLineEdit::textChanged, this, &MainWindow::applyTraceFilter);
 
@@ -491,8 +505,8 @@ QGroupBox *MainWindow::buildFuzzerPanel()
     rxOverrunsLabel_ = smallLabel("RX overruns: 0");
     txUnderrunsLabel_ = smallLabel("TX underruns: 0");
 
-    auto *queueButton = new QPushButton("Queue Stimulus");
-    auto *fuzzButton = new QPushButton("Start Fuzz");
+    queueButton_ = new QPushButton("Queue Stimulus");
+    fuzzButton_ = new QPushButton("Start Fuzz");
 
     layout->addWidget(formRow("Attack", attackCombo_));
     layout->addWidget(formRow("Selection", selectionCombo_));
@@ -501,15 +515,15 @@ QGroupBox *MainWindow::buildFuzzerPanel()
     layout->addWidget(formRow("Budget", budgetEdit_));
     layout->addWidget(formRow("Frequency", frequencySlider_));
     layout->addWidget(formRow("Rate", frequencyValueLabel_));
-    layout->addWidget(buttonRow({queueButton, fuzzButton}));
+    layout->addWidget(buttonRow({queueButton_, fuzzButton_}));
     layout->addStretch(1);
     layout->addWidget(queueLabel_);
     layout->addWidget(rxOverrunsLabel_);
     layout->addWidget(txUnderrunsLabel_);
     layout->addWidget(smallLabel("Limits: max_pending <= 32, pending_bytes <= 4096"));
 
-    connect(queueButton, &QPushButton::clicked, this, &MainWindow::queueStimulus);
-    connect(fuzzButton, &QPushButton::clicked, this, &MainWindow::startFuzz);
+    connect(queueButton_, &QPushButton::clicked, this, &MainWindow::queueStimulus);
+    connect(fuzzButton_, &QPushButton::clicked, this, &MainWindow::startFuzz);
     connect(frequencySlider_, &QSlider::valueChanged, this, &MainWindow::updateFrequencyLabel);
 
     return panel;
@@ -586,8 +600,8 @@ void MainWindow::configureComboBox(QComboBox *comboBox)
 
 void MainWindow::setupTraceTable()
 {
-    traceTable_ = new QTableWidget(0, 5);
-    traceTable_->setHorizontalHeaderLabels({"Time", "Bus", "Event", "Data", "Decoded"});
+    traceTable_ = new QTableWidget(0, 7);
+    traceTable_->setHorizontalHeaderLabels({"Seq", "Time", "Bus", "Event", "Len", "Data", "Decoded"});
     traceTable_->setAlternatingRowColors(true);
     traceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     traceTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -598,7 +612,9 @@ void MainWindow::setupTraceTable()
     traceTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     traceTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     traceTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    traceTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    traceTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    traceTable_->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    traceTable_->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
 }
 
 void MainWindow::addTraceRecord(const TraceRecord &record)
@@ -625,8 +641,11 @@ void MainWindow::renderTraceTable()
     traceTable_->setRowCount(0);
 
     for (const auto &record : traceRecords_) {
-        const QString haystack = QString("%1 %2 %3 %4 %5")
-            .arg(record.timestamp, record.bus, record.event, record.data, record.decoded)
+        const QString haystack = QString("%1 %2 %3 %4 %5 %6 %7")
+            .arg(record.sequence)
+            .arg(record.timestamp, record.bus, record.event)
+            .arg(record.dataLength)
+            .arg(record.data, record.decoded)
             .toLower();
         if (!filter.isEmpty() && !haystack.contains(filter)) {
             continue;
@@ -635,16 +654,25 @@ void MainWindow::renderTraceTable()
         const int row = traceTable_->rowCount();
         traceTable_->insertRow(row);
         const QList<QString> values = {
-            record.timestamp, record.bus, record.event, record.data, record.decoded
+            QString::number(record.sequence),
+            record.timestamp,
+            record.bus,
+            record.event,
+            QString::number(record.dataLength),
+            record.data,
+            record.decoded
         };
 
         for (int column = 0; column < values.size(); ++column) {
             auto *item = new QTableWidgetItem(values.at(column));
-            if (column == 2) {
+            if (column == 3) {
                 item->setData(Qt::ForegroundRole, QColor(eventStyle(record.event).contains("#b42318") ? "#b42318" :
                     eventStyle(record.event).contains("#6d28d9") ? "#6d28d9" :
                     eventStyle(record.event).contains("#12805c") ? "#12805c" : "#1d4ed8"));
                 item->setData(Qt::FontRole, QFont(QApplication::font().family(), 13, QFont::Bold));
+            }
+            if (column == 0 || column == 1 || column == 4 || column == 5) {
+                item->setFont(QFont("Menlo", 12));
             }
             traceTable_->setItem(row, column, item);
         }
@@ -711,6 +739,57 @@ void MainWindow::updateStatus()
     queueLabel_->setText(QString("Queued: %1").arg(queuedStimuli_));
     rxOverrunsLabel_->setText(QString("RX overruns: %1").arg(rxOverruns_));
     txUnderrunsLabel_->setText(QString("TX underruns: %1").arg(txUnderruns_));
+    updateControlAvailability();
+}
+
+void MainWindow::updateControlAvailability()
+{
+    const bool detached = deviceState_ == DeviceState::Detached || deviceState_ == DeviceState::Disarmed;
+    const bool connected = deviceState_ == DeviceState::Connected;
+    const bool capabilitiesRead = deviceState_ == DeviceState::CapabilitiesRead;
+    const bool armed = deviceState_ == DeviceState::Armed;
+    const bool running = deviceState_ == DeviceState::Capturing || deviceState_ == DeviceState::Fuzzing;
+    const bool canEditConfig = !running;
+
+    if (connectButton_) {
+        connectButton_->setEnabled(detached);
+    }
+    if (capsButton_) {
+        capsButton_->setEnabled(connected || capabilitiesRead);
+    }
+    if (armButton_) {
+        armButton_->setEnabled(capabilitiesRead || armed);
+    }
+    if (captureButton_) {
+        captureButton_->setEnabled(armed);
+    }
+    if (stopButton_) {
+        stopButton_->setEnabled(running);
+    }
+    if (disarmButton_) {
+        disarmButton_->setEnabled(connected || capabilitiesRead || armed);
+    }
+    if (queueButton_) {
+        queueButton_->setEnabled(armed);
+    }
+    if (fuzzButton_) {
+        fuzzButton_->setEnabled(armed);
+    }
+    if (addDemoFrameButton_) {
+        addDemoFrameButton_->setEnabled(running);
+    }
+
+    const QList<QWidget *> configWidgets = {
+        protocolCombo_, portCombo_, baudrateCombo_, parityCombo_, i2cSpeedCombo_,
+        i2cAddressEdit_, pinAEdit_, pinBEdit_, pullupCombo_, vtargetCombo_,
+        attackCombo_, selectionCombo_, stimulusEdit_, repeatEdit_, budgetEdit_,
+        frequencySlider_
+    };
+    for (auto *widget : configWidgets) {
+        if (widget) {
+            widget->setEnabled(canEditConfig);
+        }
+    }
 }
 
 void MainWindow::startTimerForMode(const QString &mode)
@@ -738,7 +817,15 @@ void MainWindow::addGeneratedCaptureFrame()
         ? byteString(0x40 + sequence_, 0xa0 + sequence_ * 3)
         : QString();
 
-    addTraceRecord({currentTimestamp(), bus, event, data, decodeCaptureEvent(event, data)});
+    addTraceRecord({
+        sequence_,
+        currentTimestamp(),
+        bus,
+        event,
+        byteCountForData(data),
+        data,
+        decodeCaptureEvent(event, data)
+    });
 }
 
 void MainWindow::addGeneratedFuzzFrame()
@@ -746,21 +833,37 @@ void MainWindow::addGeneratedFuzzFrame()
     ++sequence_;
     const int stimulusId = sequence_;
     addTraceRecord({
+        sequence_,
         currentTimestamp(),
         selectedBus(),
         "FUZZ_TX",
+        byteCountForData(stimulusEdit_->text()),
         QString("id=%1 %2").arg(stimulusId).arg(stimulusEdit_->text()),
         QString("%1, %2").arg(attackCombo_->currentText(), selectionCombo_->currentText())
     });
 
     if (stimulusId % 4 == 0) {
-        addTraceRecord({currentTimestamp(), selectedBus(), "NACK", "", "Target rejected mutated frame"});
+        ++sequence_;
+        addTraceRecord({sequence_, currentTimestamp(), selectedBus(), "NACK", 0, "", "Target rejected mutated frame"});
     }
 
     if (stimulusId % 13 == 0) {
+        ++sequence_;
         ++rxOverruns_;
-        addTraceRecord({currentTimestamp(), selectedBus(), "OVERFLOW", "", "Backpressure marker"});
+        addTraceRecord({sequence_, currentTimestamp(), selectedBus(), "OVERFLOW", 0, "", "Backpressure marker"});
     }
+}
+
+int MainWindow::byteCountForData(const QString &data) const
+{
+    int count = 0;
+    QRegularExpression bytePattern(R"(\b(?:0x)?[0-9A-Fa-f]{2}\b)");
+    auto matches = bytePattern.globalMatch(data);
+    while (matches.hasNext()) {
+        matches.next();
+        ++count;
+    }
+    return count;
 }
 
 QString MainWindow::currentTimestamp() const
@@ -873,7 +976,11 @@ void MainWindow::clearTrace()
 
 void MainWindow::addDemoFrame()
 {
-    addGeneratedCaptureFrame();
+    if (deviceState_ == DeviceState::Fuzzing) {
+        addGeneratedFuzzFrame();
+    } else {
+        addGeneratedCaptureFrame();
+    }
 }
 
 void MainWindow::updateFrequencyLabel(int value)

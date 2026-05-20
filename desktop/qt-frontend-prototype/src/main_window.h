@@ -15,9 +15,11 @@ class QTableWidget;
 class QTimer;
 
 struct TraceRecord {
+    int sequence;
     QString timestamp;
     QString bus;
     QString event;
+    int dataLength;
     QString data;
     QString decoded;
 };
@@ -67,10 +69,12 @@ private:
     void renderTraceTable();
     void setDeviceState(DeviceState nextState);
     void updateStatus();
+    void updateControlAvailability();
     void startTimerForMode(const QString &mode);
     void stopTimer();
     void addGeneratedCaptureFrame();
     void addGeneratedFuzzFrame();
+    int byteCountForData(const QString &data) const;
     QString currentTimestamp() const;
     QString selectedBus() const;
     QString decodeCaptureEvent(const QString &event, const QString &data) const;
@@ -82,6 +86,15 @@ private:
     QLabel *rxOverrunsLabel_ = nullptr;
     QLabel *txUnderrunsLabel_ = nullptr;
     QLabel *frequencyValueLabel_ = nullptr;
+    QPushButton *connectButton_ = nullptr;
+    QPushButton *capsButton_ = nullptr;
+    QPushButton *armButton_ = nullptr;
+    QPushButton *captureButton_ = nullptr;
+    QPushButton *stopButton_ = nullptr;
+    QPushButton *disarmButton_ = nullptr;
+    QPushButton *queueButton_ = nullptr;
+    QPushButton *fuzzButton_ = nullptr;
+    QPushButton *addDemoFrameButton_ = nullptr;
     QComboBox *protocolCombo_ = nullptr;
     QComboBox *portCombo_ = nullptr;
     QComboBox *baudrateCombo_ = nullptr;
