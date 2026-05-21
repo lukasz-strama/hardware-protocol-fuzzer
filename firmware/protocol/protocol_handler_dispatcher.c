@@ -29,6 +29,15 @@ void protocol_handle_frame(const hw_protocol_frame_header_t *hdr,
     case MSG_TYPE_START_CAPTURE:
         handle_start_capture(hdr->session_id, hdr->sequence);
         break;
+    case MSG_TYPE_SET_FUZZ_POLICY:
+        handle_set_fuzz_policy(hdr->session_id, hdr->sequence, payload, hdr->length);
+        break;
+    case MSG_TYPE_QUEUE_STIMULUS:
+        handle_queue_stimulus(hdr->session_id, hdr->sequence, payload, hdr->length);
+        break;
+    case MSG_TYPE_START_FUZZ:
+        handle_start_fuzz(hdr->session_id, hdr->sequence);
+        break;
     case MSG_TYPE_STOP:
         handle_stop(hdr->session_id, hdr->sequence);
         break;

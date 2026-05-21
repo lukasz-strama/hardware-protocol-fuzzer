@@ -1,5 +1,6 @@
 #include "session.h"
 #include "capture_common.h"
+#include "fuzz_engine.h"
 #include "pico/stdlib.h"
 #include <string.h>
 
@@ -7,8 +8,11 @@ sniffer_session_t g_session;
 
 void session_init(void) {
     memset(&g_session, 0, sizeof(g_session));
-    g_session.current_state = HW_PROTOCOL_STATE_DETACHED;
-    g_session.active_bus    = TARGET_BUS_NONE;
+    g_session.current_state   = HW_PROTOCOL_STATE_DETACHED;
+    g_session.active_bus      = TARGET_BUS_NONE;
+    g_session.fuzz_mode       = false;
+    g_session.fuzz_policy_ready = false;
+    fuzz_engine_init();
 }
 
 void session_handle_set_bus(const uint8_t *payload) {
@@ -66,8 +70,30 @@ uint32_t session_handle_stop(void) {
     return 0;
 }
 
+bool session_handle_set_fuzz_policy(const uint8_t *payload, uint16_t len) {
+    if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING) return false;
+    bool ok = fuzz_engine_set_policy(payload, len);
+    if (ok) {
+        g_session.fuzz_policy_ready = true;
+    }
+    return ok;
+}
+
+void session_handle_start_fuzz(void) {
+    if (g_session.current_state != HW_PROTOCOL_STATE_ARMED) return;
+    if (!g_session.fuzz_policy_ready) return;
+    if (g_session.active_bus != TARGET_BUS_UART) return;
+
+    g_session.fuzz_mode     = true;
+    g_session.current_state = HW_PROTOCOL_STATE_RUNNING;
+    fuzz_engine_start();
+}
+
 void session_handle_disarm(void) {
+    fuzz_engine_stop();
     capture_stop();
-    g_session.active_bus    = TARGET_BUS_NONE;
-    g_session.current_state = HW_PROTOCOL_STATE_CONNECTED;
+    g_session.fuzz_mode         = false;
+    g_session.fuzz_policy_ready = false;
+    g_session.active_bus        = TARGET_BUS_NONE;
+    g_session.current_state     = HW_PROTOCOL_STATE_CONNECTED;
 }
