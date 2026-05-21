@@ -2,7 +2,6 @@
 #include "protocol.h"
 #include "protocol_layout.h"
 #include "session.h"
-#include "fuzz_engine.h"
 #include <string.h>
 
 #ifndef HW_PROTOCOL_FW_SUPPORTS_CAPTURE
@@ -102,63 +101,6 @@ void handle_arm(uint16_t session_id, uint32_t seq,
 
 void handle_start_capture(uint16_t session_id, uint32_t seq) {
     session_handle_start_capture();
-    handle_get_status(session_id, seq);
-}
-
-void handle_set_fuzz_policy(uint16_t session_id, uint32_t seq,
-                             const uint8_t *payload, uint16_t len)
-{
-    bool ok = session_handle_set_fuzz_policy(payload, len);
-    if (!ok) {
-        hw_protocol_error_t err = {
-            .context_code = MSG_TYPE_SET_FUZZ_POLICY,
-            .error_code   = 1,
-            .message_len  = 0,
-            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
-            .reserved     = 0
-        };
-        protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
-                            (const uint8_t *)&err, sizeof(err));
-        return;
-    }
-    handle_get_status(session_id, seq);
-}
-
-void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
-                            const uint8_t *payload, uint16_t len)
-{
-    if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING) {
-        hw_protocol_error_t err = {
-            .context_code = MSG_TYPE_QUEUE_STIMULUS,
-            .error_code   = 2,  /* rejected: running */
-            .message_len  = 0,
-            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
-            .reserved     = 0
-        };
-        protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
-                            (const uint8_t *)&err, sizeof(err));
-        return;
-    }
-    bool ok = fuzz_engine_queue_stimulus(payload, len);
-    if (!ok) {
-        hw_protocol_error_t err = {
-            .context_code = MSG_TYPE_QUEUE_STIMULUS,
-            .error_code   = 3,  /* queue full or pool exhausted */
-            .message_len  = 0,
-            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
-            .reserved     = 0
-        };
-        protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
-                            (const uint8_t *)&err, sizeof(err));
-        return;
-    }
-    /* Update STATUS so desktop can track queue depth */
-    g_session.status.queued_stimuli = fuzz_engine_queued_count();
-    handle_get_status(session_id, seq);
-}
-
-void handle_start_fuzz(uint16_t session_id, uint32_t seq) {
-    session_handle_start_fuzz();
     handle_get_status(session_id, seq);
 }
 
