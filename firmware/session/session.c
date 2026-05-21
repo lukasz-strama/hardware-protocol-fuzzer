@@ -123,6 +123,10 @@ uint32_t session_handle_stop(void) {
     if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING ||
         g_session.current_state == HW_PROTOCOL_STATE_ARMED) {
         g_session.current_state = HW_PROTOCOL_STATE_STOPPING;
+        if (g_session.fuzz_mode) {
+            fuzz_engine_stop();
+            g_session.fuzz_mode = false;
+        }
         capture_stop();
         g_session.current_state = HW_PROTOCOL_STATE_ARMED;
     }

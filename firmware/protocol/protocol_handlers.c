@@ -43,7 +43,7 @@ void handle_get_caps(uint16_t session_id, uint32_t seq) {
 
     caps->bus_mask = (1u << HW_PROTOCOL_BUS_UART);
 
-    caps->supported_modes  = HW_PROTOCOL_MODE_CAPTURE;
+    caps->supported_modes  = HW_PROTOCOL_MODE_CAPTURE | HW_PROTOCOL_MODE_FUZZ;
 
     caps->pio_sm_count     = 2;
     caps->reserved         = 0;
@@ -76,7 +76,7 @@ void handle_get_status(uint16_t session_id, uint32_t seq) {
         .last_error      = 0,
         .state           = g_session.current_state,
         .flags           = 0,
-        .queued_stimuli  = 0,
+        .queued_stimuli  = fuzz_engine_queued_count(),
         .reserved        = 0
     };
 
@@ -105,7 +105,8 @@ void handle_hello(uint16_t session_id, uint32_t seq,
 
     hw_protocol_hello_ack_t ack = {
         .negotiated_protocol = HW_PROTOCOL_VERSION_V1,
-        .fw_flags            = HW_PROTOCOL_FW_SUPPORTS_STREAMING |
+        .fw_flags            = HW_PROTOCOL_FW_SUPPORTS_FUZZ |
+                               HW_PROTOCOL_FW_SUPPORTS_STREAMING |
                                HW_PROTOCOL_FW_REQUIRES_EXTERNAL_PULLUPS,
         .fw_version          = 1,
         .session_id          = session_id,
