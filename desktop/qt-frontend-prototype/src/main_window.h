@@ -1,6 +1,7 @@
 #ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
+#include <QByteArray>
 #include <QMainWindow>
 #include <QVector>
 
@@ -13,6 +14,7 @@ class QPushButton;
 class QSlider;
 class QTableWidget;
 class QTimer;
+class PicoBackend;
 
 struct TraceRecord {
     int sequence;
@@ -32,6 +34,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
 
 private slots:
+    void handleBackendFrame(int type, quint16 sessionId, quint32 sequence, const QByteArray &payload);
     void connectDevice();
     void readCapabilities();
     void armDevice();
@@ -115,6 +118,7 @@ private:
     QSlider *frequencySlider_ = nullptr;
     QTableWidget *traceTable_ = nullptr;
     QTimer *timer_ = nullptr;
+    PicoBackend *backend_ = nullptr;
 
     QVector<TraceRecord> traceRecords_;
     DeviceState deviceState_ = DeviceState::Detached;
@@ -124,6 +128,8 @@ private:
     int rxOverruns_ = 0;
     int txUnderruns_ = 0;
     int sessionId_ = 0;
+    uint8_t supportedModes_ = 0;
+    bool fuzzSupported_ = false;
 };
 
 #endif

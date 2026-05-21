@@ -32,6 +32,19 @@ static pico_result_t require_state(pico_session_t *s,
     return PICO_OK;
 }
 
+static pico_result_t require_state_any(pico_session_t *s,
+                                       hw_protocol_session_state_t first,
+                                       hw_protocol_session_state_t second)
+{
+    if (s->state == first || s->state == second) {
+        return PICO_OK;
+    }
+
+    fprintf(stderr, "[session] Zły stan: %s, wymagany %s albo %s\n",
+            state_name(s->state), state_name(first), state_name(second));
+    return PICO_ERR_STATE;
+}
+
 // Komendy do Pico
 pico_result_t session_hello(pico_session_t *s)
 {
@@ -62,7 +75,9 @@ pico_result_t session_get_status(pico_session_t *s)
 
 pico_result_t session_set_bus(pico_session_t *s, const hw_protocol_set_bus_t *cfg)
 {
-    pico_result_t r = require_state(s, HW_PROTOCOL_STATE_CAPABILITIES_READ);
+    pico_result_t r = require_state_any(s,
+                                        HW_PROTOCOL_STATE_CAPABILITIES_READ,
+                                        HW_PROTOCOL_STATE_CONFIGURED);
     if (r) return r;
 
     uint8_t buf[sizeof(hw_protocol_set_bus_t)];
@@ -81,12 +96,18 @@ pico_result_t session_set_bus(pico_session_t *s, const hw_protocol_set_bus_t *cf
 
     printf("[session] → SET_BUS (bus=%u, speed=%u Hz, pin_a=%u, pin_b=%u)\n",
            cfg->bus_type, cfg->speed_hz, cfg->pin_a, cfg->pin_b);
-    return send_payload(s, MSG_SET_BUS, buf, sizeof(buf));
+    r = send_payload(s, MSG_SET_BUS, buf, sizeof(buf));
+    if (!r) {
+        s->state = HW_PROTOCOL_STATE_CONFIGURED;
+    }
+    return r;
 }
 
 pico_result_t session_set_target(pico_session_t *s, const hw_protocol_set_target_t *cfg)
 {
-    pico_result_t r = require_state(s, HW_PROTOCOL_STATE_CAPABILITIES_READ);
+    pico_result_t r = require_state_any(s,
+                                        HW_PROTOCOL_STATE_CAPABILITIES_READ,
+                                        HW_PROTOCOL_STATE_CONFIGURED);
     if (r) return r;
 
     uint8_t buf[sizeof(hw_protocol_set_target_t)];
@@ -101,7 +122,11 @@ pico_result_t session_set_target(pico_session_t *s, const hw_protocol_set_target
 
     printf("[session] → SET_TARGET (vtarget=%u mV, pullup=%u)\n",
            cfg->vtarget_mv, cfg->pullup_mode);
-    return send_payload(s, MSG_SET_TARGET, buf, sizeof(buf));
+    r = send_payload(s, MSG_SET_TARGET, buf, sizeof(buf));
+    if (!r) {
+        s->state = HW_PROTOCOL_STATE_CONFIGURED;
+    }
+    return r;
 }
 
 pico_result_t session_set_fuzz_policy(pico_session_t *s,
@@ -288,7 +313,7 @@ static void handle_status(pico_session_t *s, const uint8_t *payload, uint16_t le
     uint8_t  queued = payload[18];
     printf("[session] ← STATUS rx_overruns=%u tx_underruns=%u state=%s queued=%u\n",
            rx_ov, tx_un, state_name((hw_protocol_session_state_t)state), queued);
-    (void)s;
+    s->state = (hw_protocol_session_state_t)state;
 }
 
 static void handle_trace_decoded(pico_session_t *s, const uint8_t *payload, uint16_t len)
@@ -406,6 +431,10 @@ pico_result_t session_pump(pico_session_t *s)
                 printf("[session] ← unknown type 0x%02X (%u B)\n",
                        hdr.type, hdr.length);
                 break;
+        }
+
+        if (s->on_frame) {
+            s->on_frame(s->callback_user_data, &hdr, payload, hdr.length);
         }
     }
 

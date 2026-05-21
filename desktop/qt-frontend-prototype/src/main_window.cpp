@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "backend_bridge.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -117,17 +118,22 @@ QLabel *smallLabel(const QString &text)
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
-      timer_(new QTimer(this))
+      timer_(new QTimer(this)),
+      backend_(new PicoBackend(this))
 {
     setWindowTitle("Hardware Protocol Fuzzer - Qt Desktop Prototype");
     setCentralWidget(buildCentralWidget());
-    statusBar()->showMessage("Mock transport: protocol frames are generated locally");
+    statusBar()->showMessage("Real backend: USB CDC serial session to Pico");
+
+    connect(backend_, &PicoBackend::frameReceived, this, &MainWindow::handleBackendFrame);
+    connect(backend_, &PicoBackend::backendUpdated, this, &MainWindow::updateStatus);
+    connect(backend_, &PicoBackend::logMessage, this, [this](const QString &message) {
+        addSessionLog(message);
+    });
 
     connect(timer_, &QTimer::timeout, this, [this]() {
-        if (timerMode_ == "fuzz") {
-            addGeneratedFuzzFrame();
-        } else {
-            addGeneratedCaptureFrame();
+        if (backend_) {
+            backend_->pump();
         }
     });
 
@@ -177,7 +183,7 @@ QWidget *MainWindow::buildCentralWidget()
 
     rootLayout->addWidget(header);
 
-    auto *mockBanner = new QLabel("MOCK MODE - simulated protocol traffic, no hardware connected");
+    auto *mockBanner = new QLabel("Live mode - USB CDC backend connected to the Pico firmware");
     mockBanner->setObjectName("mockBanner");
     mockBanner->setAlignment(Qt::AlignCenter);
     rootLayout->addWidget(mockBanner);
@@ -373,35 +379,25 @@ QGroupBox *MainWindow::buildConnectionPanel()
     layout->setSpacing(9);
 
     protocolCombo_ = new DropdownComboBox;
-    protocolCombo_->addItems({"I2C", "UART"});
+    protocolCombo_->addItems({"UART"});
     configureComboBox(protocolCombo_);
 
     portCombo_ = new DropdownComboBox;
-    portCombo_->addItems({"Mock Pico / USB CDC", "COM3", "/dev/ttyACM0", "/dev/cu.usbmodem1101"});
+    portCombo_->addItems({"/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyACM1"});
     configureComboBox(portCombo_);
 
     baudrateCombo_ = new DropdownComboBox;
-    baudrateCombo_->addItems({"115200", "230400", "460800", "921600", "1000000"});
+    baudrateCombo_->addItems({"9600", "115200", "230400", "460800", "921600", "1000000"});
     configureComboBox(baudrateCombo_);
 
     parityCombo_ = new DropdownComboBox;
     parityCombo_->addItems({"None", "Even", "Odd"});
     configureComboBox(parityCombo_);
 
-    i2cSpeedCombo_ = new DropdownComboBox;
-    i2cSpeedCombo_->addItems({"100 kHz", "400 kHz", "1 MHz"});
-    i2cSpeedCombo_->setCurrentText("400 kHz");
-    configureComboBox(i2cSpeedCombo_);
-
-    pullupCombo_ = new DropdownComboBox;
-    pullupCombo_->addItems({"External", "None", "Internal test only"});
-    configureComboBox(pullupCombo_);
-
     vtargetCombo_ = new DropdownComboBox;
     vtargetCombo_->addItems({"3300 mV", "1800 mV", "5000 mV"});
     configureComboBox(vtargetCombo_);
 
-    i2cAddressEdit_ = new QLineEdit("0x48");
     pinAEdit_ = new QLineEdit("4");
     pinBEdit_ = new QLineEdit("5");
 
@@ -409,11 +405,8 @@ QGroupBox *MainWindow::buildConnectionPanel()
     layout->addWidget(formRow("Port", portCombo_));
     layout->addWidget(formRow("UART baud", baudrateCombo_));
     layout->addWidget(formRow("Parity", parityCombo_));
-    layout->addWidget(formRow("I2C speed", i2cSpeedCombo_));
-    layout->addWidget(formRow("I2C addr", i2cAddressEdit_));
-    layout->addWidget(formRow("SDA / TX", pinAEdit_));
-    layout->addWidget(formRow("SCL / RX", pinBEdit_));
-    layout->addWidget(formRow("Pull-up", pullupCombo_));
+    layout->addWidget(formRow("TX", pinAEdit_));
+    layout->addWidget(formRow("RX", pinBEdit_));
     layout->addWidget(formRow("Vtarget", vtargetCombo_));
 
     connectButton_ = new QPushButton("Connect");
@@ -434,7 +427,7 @@ QGroupBox *MainWindow::buildConnectionPanel()
 
     layout->addStretch(1);
     layout->addWidget(smallLabel("Frame: 16 B header + payload, CRC-16/CCITT-FALSE"));
-    layout->addWidget(smallLabel("Safety: active pins are disabled before ARM"));
+    layout->addWidget(smallLabel("Backend: root serial transport, firmware currently supports UART capture"));
 
     connect(connectButton_, &QPushButton::clicked, this, &MainWindow::connectDevice);
     connect(capsButton_, &QPushButton::clicked, this, &MainWindow::readCapabilities);
@@ -770,18 +763,17 @@ void MainWindow::updateControlAvailability()
         disarmButton_->setEnabled(connected || capabilitiesRead || armed);
     }
     if (queueButton_) {
-        queueButton_->setEnabled(armed);
+        queueButton_->setEnabled(armed && fuzzSupported_);
     }
     if (fuzzButton_) {
-        fuzzButton_->setEnabled(armed);
+        fuzzButton_->setEnabled(armed && fuzzSupported_);
     }
     if (addDemoFrameButton_) {
         addDemoFrameButton_->setEnabled(running);
     }
 
     const QList<QWidget *> configWidgets = {
-        protocolCombo_, portCombo_, baudrateCombo_, parityCombo_, i2cSpeedCombo_,
-        i2cAddressEdit_, pinAEdit_, pinBEdit_, pullupCombo_, vtargetCombo_,
+        protocolCombo_, portCombo_, baudrateCombo_, parityCombo_, pinAEdit_, pinBEdit_, vtargetCombo_,
         attackCombo_, selectionCombo_, stimulusEdit_, repeatEdit_, budgetEdit_,
         frequencySlider_
     };
@@ -795,13 +787,135 @@ void MainWindow::updateControlAvailability()
 void MainWindow::startTimerForMode(const QString &mode)
 {
     timerMode_ = mode;
-    timer_->start(700);
+    timer_->start(20);
 }
 
 void MainWindow::stopTimer()
 {
     timer_->stop();
     timerMode_ = "idle";
+}
+
+void MainWindow::handleBackendFrame(int type, quint16 sessionId, quint32 sequence, const QByteArray &payload)
+{
+    const msg_type_t msgType = static_cast<msg_type_t>(type);
+
+    sessionId_ = sessionId;
+
+    if (msgType == MSG_HELLO_ACK && payload.size() >= 8) {
+        addSessionLog(QString("HELLO_ACK session=0x%1")
+            .arg(sessionId_, 4, 16, QLatin1Char('0')).toUpper());
+    } else if (msgType == MSG_CAPS_RESPONSE && payload.size() >= 16) {
+        supportedModes_ = static_cast<uint8_t>(payload.at(9));
+        fuzzSupported_ = (supportedModes_ & HW_PROTOCOL_MODE_FUZZ) != 0;
+        addSessionLog(QString("CAPS_RESPONSE modes=0x%1 bus_mask=0x%2")
+            .arg(supportedModes_, 2, 16, QLatin1Char('0'))
+            .arg(static_cast<unsigned char>(payload.at(8)), 2, 16, QLatin1Char('0')).toUpper());
+    } else if (msgType == MSG_ARM_OK && payload.size() >= 4) {
+        addSessionLog(QString("ARM_OK session=0x%1 state=%2")
+            .arg(sessionId_, 4, 16, QLatin1Char('0'))
+            .arg(static_cast<unsigned char>(payload.at(2))));
+    } else if (msgType == MSG_STOP_OK && payload.size() >= 8) {
+        const quint32 drained = static_cast<quint32>(static_cast<unsigned char>(payload.at(0)))
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(1))) << 8)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(2))) << 16)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(3))) << 24);
+        addSessionLog(QString("STOP_OK session=0x%1 drained=%2")
+            .arg(sessionId_, 4, 16, QLatin1Char('0'))
+            .arg(drained));
+    } else if (msgType == MSG_STATUS && payload.size() >= 20) {
+        rxOverruns_ = static_cast<uint32_t>(static_cast<unsigned char>(payload.at(0)))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(1))) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(2))) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(3))) << 24);
+        txUnderruns_ = static_cast<uint32_t>(static_cast<unsigned char>(payload.at(4)))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(5))) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(6))) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(payload.at(7))) << 24);
+        queuedStimuli_ = static_cast<int>(static_cast<unsigned char>(payload.at(18)));
+    } else if (msgType == MSG_TRACE_DECODED && payload.size() >= 12) {
+        const quint32 traceSeq = static_cast<quint32>(static_cast<unsigned char>(payload.at(0)))
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(1))) << 8)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(2))) << 16)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(3))) << 24);
+        const quint32 timestampUs = static_cast<quint32>(static_cast<unsigned char>(payload.at(4)))
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(5))) << 8)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(6))) << 16)
+            | (static_cast<quint32>(static_cast<unsigned char>(payload.at(7))) << 24);
+        const quint16 dataLen = static_cast<quint16>(static_cast<unsigned char>(payload.at(8)))
+            | (static_cast<quint16>(static_cast<unsigned char>(payload.at(9))) << 8);
+        const uint8_t sourceBus = static_cast<uint8_t>(payload.at(10));
+        const uint8_t eventType = static_cast<uint8_t>(payload.at(11));
+
+        QString dataHex;
+        const int available = qMin<int>(dataLen, payload.size() - 12);
+        for (int i = 0; i < available; ++i) {
+            dataHex += QString("%1 ")
+                .arg(static_cast<unsigned char>(payload.at(12 + i)), 2, 16, QLatin1Char('0'));
+        }
+
+        QString eventName = "BYTE";
+        switch (eventType) {
+            case HW_PROTOCOL_EVENT_START:   eventName = "START"; break;
+            case HW_PROTOCOL_EVENT_STOP:    eventName = "STOP"; break;
+            case HW_PROTOCOL_EVENT_ACK:     eventName = "ACK"; break;
+            case HW_PROTOCOL_EVENT_NACK:    eventName = "NACK"; break;
+            case HW_PROTOCOL_EVENT_BREAK:   eventName = "BREAK"; break;
+            case HW_PROTOCOL_EVENT_OVERFLOW:eventName = "OVERFLOW"; break;
+            default: break;
+        }
+
+        QString decoded;
+        if (eventType == HW_PROTOCOL_EVENT_BYTE && available > 0) {
+            QStringList parts;
+            for (int i = 0; i < available; ++i) {
+                const unsigned char ch = static_cast<unsigned char>(payload.at(12 + i));
+                if (ch >= 0x20 && ch < 0x7F) {
+                    parts << QString("'%1'").arg(QChar(ch));
+                } else if (ch == 0x0A) {
+                    parts << "\\n";
+                } else if (ch == 0x0D) {
+                    parts << "\\r";
+                } else if (ch == 0x09) {
+                    parts << "\\t";
+                } else if (ch == 0x00) {
+                    parts << "NUL";
+                } else {
+                    parts << QString("\\x%1").arg(ch, 2, 16, QLatin1Char('0'));
+                }
+            }
+            decoded = parts.join(" ");
+        } else if (eventType == HW_PROTOCOL_EVENT_OVERFLOW) {
+            decoded = "RX FIFO overflow";
+        } else if (eventType == HW_PROTOCOL_EVENT_BREAK) {
+            decoded = "UART line break";
+        } else {
+            decoded = eventName;
+        }
+
+        addTraceRecord({
+            static_cast<int>(traceSeq),
+            QString("%1 us").arg(timestampUs),
+            sourceBus ? "UART" : "I2C",
+            eventName,
+            static_cast<int>(dataLen),
+            dataHex.trimmed().toUpper(),
+            decoded
+        });
+
+        if (eventType == HW_PROTOCOL_EVENT_OVERFLOW) {
+            ++rxOverruns_;
+        }
+    } else if (msgType == MSG_ERROR && payload.size() >= 8) {
+        const quint16 errorCode = static_cast<quint16>(static_cast<unsigned char>(payload.at(2)))
+            | (static_cast<quint16>(static_cast<unsigned char>(payload.at(3))) << 8);
+        const quint8 severity = static_cast<quint8>(payload.at(6));
+        addSessionLog(QString("ERROR code=0x%1 severity=%2")
+            .arg(errorCode, 4, 16, QLatin1Char('0'))
+            .arg(static_cast<unsigned>(severity)));
+    }
+
+    updateStatus();
 }
 
 void MainWindow::addGeneratedCaptureFrame()
@@ -902,50 +1016,126 @@ QString MainWindow::decodeCaptureEvent(const QString &event, const QString &data
 void MainWindow::connectDevice()
 {
     stopTimer();
-    sessionId_ = 0x42;
+
+    QString errorMessage;
+    if (!backend_->openPort(portCombo_->currentText(), baudrateCombo_->currentText().toInt(), &errorMessage)) {
+        addSessionLog(QString("Open failed: %1").arg(errorMessage));
+        setDeviceState(DeviceState::Detached);
+        return;
+    }
+
+    if (backend_->sendHello() != PICO_OK || !backend_->waitForState(HW_PROTOCOL_STATE_CONNECTED, HW_PROTOCOL_ARM_TIMEOUT_MS)) {
+        addSessionLog("HELLO failed or timed out");
+        return;
+    }
+
+    sessionId_ = backend_->sessionId();
     setDeviceState(DeviceState::Connected);
-    addSessionLog("HELLO -> HELLO_ACK, session=0x0042");
+    addSessionLog(QString("HELLO -> HELLO_ACK, session=0x%1")
+        .arg(sessionId_, 4, 16, QLatin1Char('0')).toUpper());
 }
 
 void MainWindow::readCapabilities()
 {
+    if (backend_->sendGetCaps() != PICO_OK || !backend_->waitForState(HW_PROTOCOL_STATE_CAPABILITIES_READ, HW_PROTOCOL_ARM_TIMEOUT_MS)) {
+        addSessionLog("GET_CAPS failed or timed out");
+        return;
+    }
+
+    supportedModes_ = backend_->supportedModes();
+    fuzzSupported_ = (supportedModes_ & HW_PROTOCOL_MODE_FUZZ) != 0;
     setDeviceState(DeviceState::CapabilitiesRead);
-    addSessionLog("GET_CAPS -> CAPS_RESPONSE, I2C/UART, PIO=8");
+    addSessionLog(QString("GET_CAPS -> CAPS_RESPONSE, modes=0x%1")
+        .arg(supportedModes_, 2, 16, QLatin1Char('0')).toUpper());
 }
 
 void MainWindow::armDevice()
 {
     stopTimer();
+
+    hw_protocol_set_bus_t bus = {};
+    bus.speed_hz = baudrateCombo_->currentText().toUInt();
+    bus.bus_type = HW_PROTOCOL_BUS_UART;
+    bus.bus_flags = 0;
+    bus.pin_a = static_cast<uint8_t>(pinAEdit_->text().toUInt());
+    bus.pin_b = static_cast<uint8_t>(pinBEdit_->text().toUInt());
+    bus.uart_parity = static_cast<uint8_t>(parityCombo_->currentIndex());
+    bus.uart_stop_bits = 0;
+
+    hw_protocol_set_target_t target = {};
+    target.vtarget_mv = static_cast<uint16_t>(vtargetCombo_->currentText().section(' ', 0, 0).toUInt());
+    target.pin_dir_mask = 0x00;
+    target.pullup_mode = HW_PROTOCOL_PULLUP_NONE;
+    target.pullup_mask = 0x00;
+
+    if (backend_->sendSetBus(bus) != PICO_OK ||
+        backend_->sendSetTarget(target) != PICO_OK ||
+        backend_->sendArm() != PICO_OK ||
+        !backend_->waitForState(HW_PROTOCOL_STATE_ARMED, HW_PROTOCOL_ARM_TIMEOUT_MS)) {
+        addSessionLog("ARM sequence failed or timed out");
+        return;
+    }
+
     setDeviceState(DeviceState::Armed);
-    addSessionLog(QString("SET_BUS + SET_TARGET -> ARM_OK, pins=%1/%2, vtarget=%3")
+    addSessionLog(QString("SET_BUS + SET_TARGET -> ARM_OK, tx=%1 rx=%2, vtarget=%3")
         .arg(pinAEdit_->text(), pinBEdit_->text(), vtargetCombo_->currentText()));
 }
 
 void MainWindow::startCapture()
 {
+    if (backend_->sendStartCapture() != PICO_OK || !backend_->waitForState(HW_PROTOCOL_STATE_RUNNING, HW_PROTOCOL_ARM_TIMEOUT_MS)) {
+        addSessionLog("START_CAPTURE failed or timed out");
+        return;
+    }
+
     setDeviceState(DeviceState::Capturing);
-    addSessionLog("START_CAPTURE, mock TRACE_DECODED stream active");
-    addGeneratedCaptureFrame();
+    addSessionLog("START_CAPTURE, live TRACE_DECODED stream active");
     startTimerForMode("capture");
 }
 
 void MainWindow::stopActivity()
 {
+    if (backend_->sendStop() != PICO_OK || !backend_->waitForState(HW_PROTOCOL_STATE_ARMED, HW_PROTOCOL_STOP_TIMEOUT_MS)) {
+        addSessionLog("STOP failed or timed out");
+        return;
+    }
+
     stopTimer();
     setDeviceState(DeviceState::Armed);
-    addSessionLog("STOP -> STOP_OK, drained=512");
+    addSessionLog("STOP -> STOP_OK, drained from firmware");
 }
 
 void MainWindow::disarmDevice()
 {
+    if (backend_->sendDisarm() != PICO_OK) {
+        addSessionLog("DISARM failed");
+        return;
+    }
+
     stopTimer();
     queuedStimuli_ = 0;
     setDeviceState(DeviceState::Disarmed);
     addSessionLog("DISARM, pins=HIGH-Z");
+    backend_->closePort();
 }
 
 void MainWindow::queueStimulus()
 {
+    if (!fuzzSupported_) {
+        addSessionLog("QUEUE_STIMULUS skipped: firmware does not advertise fuzz support yet");
+        return;
+    }
+
+    const QByteArray bytes = stimulusEdit_->text().toLatin1();
+    if (backend_->sendQueueStimulus(static_cast<uint32_t>(sequence_ + 1),
+                                    reinterpret_cast<const uint8_t *>(bytes.constData()),
+                                    static_cast<uint16_t>(bytes.size()),
+                                    HW_PROTOCOL_STIMULUS_INLINE_PAYLOAD,
+                                    0) != PICO_OK) {
+        addSessionLog("QUEUE_STIMULUS failed");
+        return;
+    }
+
     queuedStimuli_ = qMin(32, queuedStimuli_ + 1);
     if (deviceState_ != DeviceState::Capturing && deviceState_ != DeviceState::Fuzzing) {
         setDeviceState(DeviceState::Armed);
@@ -956,12 +1146,21 @@ void MainWindow::queueStimulus()
 
 void MainWindow::startFuzz()
 {
+    if (!fuzzSupported_) {
+        addSessionLog("START_FUZZ skipped: firmware does not advertise fuzz support yet");
+        return;
+    }
+
     if (queuedStimuli_ == 0) {
         queueStimulus();
     }
+    if (backend_->sendStartFuzz() != PICO_OK) {
+        addSessionLog("START_FUZZ failed");
+        return;
+    }
+
     setDeviceState(DeviceState::Fuzzing);
     addSessionLog("START_FUZZ, FUZZ_TX events will be correlated with trace");
-    addGeneratedFuzzFrame();
     startTimerForMode("fuzz");
 }
 

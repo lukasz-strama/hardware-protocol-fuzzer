@@ -1,13 +1,13 @@
-# Qt Desktop Frontend Prototype
+# Qt Desktop Frontend
 
-Glowny prototyp desktopowej czesci projektu. Aplikacja jest napisana w C++/Qt Widgets i pokazuje:
+Desktopowa czesc projektu. Aplikacja jest napisana w C++/Qt Widgets i łączy się z firmware Pico przez USB CDC/serial, korzystając z protokołu zdefiniowanego w `docs/contract.md` i współdzielonych struktur z repozytorium root.
 
-- konfiguracje polaczenia I2C/UART,
-- przewijana tabele przechwyconych ramek,
-- panel fuzzera z wyborem typu ataku, trybu, bodzcow i czestotliwosci,
-- mockowany przebieg `HELLO_ACK -> CAPS -> ARM_OK -> START_CAPTURE/START_FUZZ -> STOP_OK/DISARM`.
+UI pokazuje:
 
-Transport USB i firmware sa na razie mockowane. UI jest przygotowane tak, zeby pozniej podpiac realny transport i parser ramek z `docs/protocol_layout.h`.
+- konfigurację portu szeregowego i parametrów UART,
+- przewijaną tabelę przechwyconych ramek,
+- panel logów sesji,
+- podstawowe sterowanie capture oraz miejsce na fuzzing, gdy firmware zacznie go wystawiać.
 
 ## Wymagania
 
@@ -29,13 +29,13 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qt
 cmake --build build
 ```
 
-Uruchomienie na macOS:
+Uruchomienie na Linuxie:
 
 ```sh
-open build/HardwareProtocolFuzzerDesktop.app
+./build/HardwareProtocolFuzzerDesktop
 ```
 
-Na Windows/Linux sciezka do binarki bedzie w katalogu `build` wygenerowanym przez CMake.
+Jeśli chcesz wskazać inny port, wybierz go w polu `Port` w aplikacji przed kliknięciem `Connect`.
 
 ## Build przez qmake
 
@@ -47,29 +47,28 @@ make
 
 ## Szybka sciezka demo
 
-1. Kliknij `Connect`.
-2. Kliknij `Get Caps`.
-3. Ustaw parametry I2C albo UART.
-4. Kliknij `Arm`.
-5. Kliknij `Start Capture`, zeby zobaczyc dopisywane ramki.
-6. Kliknij `Queue Stimulus`, a potem `Start Fuzz`.
-7. Kliknij `Stop` albo `Disarm`.
+1. Wgraj firmware na Pico i podłącz je do komputera przez USB.
+2. Wybierz port, zwykle `/dev/ttyACM0` albo `/dev/ttyUSB0`.
+3. Kliknij `Connect`.
+4. Kliknij `Get Caps`.
+5. Kliknij `Arm`.
+6. Kliknij `Start Capture`, żeby zobaczyć live `TRACE_DECODED`.
+7. Kliknij `Stop`, a potem `Disarm`.
 
 ## Jak obslugiwac ekran
 
-Aplikacja dziala teraz w trybie `MOCK MODE`, czyli nie laczy sie jeszcze z prawdziwym Raspberry Pi Pico. Dane w tabeli sa symulowane lokalnie, zeby pokazac zachowanie frontendu przed gotowym firmware.
+Aplikacja działa z rzeczywistym backendem serialowym. Jeśli firmware nie odpowiada, aplikacja pokaże błąd po `Connect` lub `Get Caps`.
 
-Panel `Connection` sluzy do ustawienia parametrow polaczenia:
+Panel `Connection` sluży do ustawienia parametrów połączenia:
 
-- `Protocol`: wybor `I2C` albo `UART`,
-- `Port`: docelowo port urzadzenia, teraz mock,
+- `Protocol`: obecnie UART,
+- `Port`: port urządzenia Pico,
 - `UART baud` i `Parity`: parametry UART,
-- `I2C speed` i `I2C addr`: parametry I2C,
-- `SDA / TX`, `SCL / RX`: piny magistrali,
-- `Pull-up` i `Vtarget`: ustawienia celu,
+- `TX` i `RX`: piny używane przez sniffer,
+- `Vtarget`: ustawienie celu,
 - `Session log`: log komend sesji, np. `HELLO`, `GET_CAPS`, `ARM`, `STOP`.
 
-Panel `Captured Frames` pokazuje symulowane rekordy trace. Kolumny oznaczaja:
+Panel `Captured Frames` pokazuje live rekordy trace z firmware. Kolumny oznaczaja:
 
 - `Seq`: numer rekordu,
 - `Time`: znacznik czasu,
@@ -79,7 +78,7 @@ Panel `Captured Frames` pokazuje symulowane rekordy trace. Kolumny oznaczaja:
 - `Data`: dane w hex,
 - `Decoded`: opis zdekodowanego zdarzenia.
 
-Panel `Fuzzer Control` sluzy do ustawienia mockowanej polityki fuzzera:
+Panel `Fuzzer Control` służy do ustawienia polityki fuzzera, ale przy obecnym firmware pozostaje częściowo nieaktywny, bo firmware jeszcze nie wystawia `START_FUZZ` i `QUEUE_STIMULUS`:
 
 - `Attack`: typ scenariusza,
 - `Selection`: sposob wyboru bodzcow,
@@ -88,10 +87,12 @@ Panel `Fuzzer Control` sluzy do ustawienia mockowanej polityki fuzzera:
 - `Queue Stimulus`: dodaje bodziec do kolejki,
 - `Start Fuzz`: uruchamia symulowany fuzzing.
 
+Jeśli chcesz tylko capture UART, po `Get Caps` zobaczysz, że fuzzing jest wyłączony, dopóki firmware nie doda obsługi tych komend.
+
 ## Blokowanie przyciskow wedlug stanu
 
 - Na poczatku dziala tylko `Connect`.
 - Po `Connect` dziala `Get Caps`.
 - Po `Get Caps` dziala `Arm`.
-- Po `Arm` dzialaja `Start Capture`, `Queue Stimulus`, `Start Fuzz`, `Disarm`.
+- Po `Arm` działają `Start Capture` i `Disarm`.
 - Podczas capture/fuzz dziala glownie `Stop`, a konfiguracja jest zablokowana.

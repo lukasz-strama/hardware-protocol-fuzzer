@@ -110,14 +110,14 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    // SET_BUS — I2C 400 kHz, GPIO 4 (SDA), GPIO 5 (SCL)
+    // SET_BUS — UART capture on GPIO 17 (RX)
     {
         hw_protocol_set_bus_t bus = {
-            .speed_hz      = 400000,
-            .bus_type      = HW_PROTOCOL_BUS_I2C,
+            .speed_hz      = 115200,
+            .bus_type      = HW_PROTOCOL_BUS_UART,
             .bus_flags     = 0,
-            .pin_a         = 4,   // SDA
-            .pin_b         = 5,   // SCL
+            .pin_a         = 0,
+            .pin_b         = 17,  // RX
             .uart_parity   = 0,
             .uart_stop_bits= 0,
         };
@@ -128,8 +128,8 @@ int main(int argc, char *argv[])
         hw_protocol_set_target_t tgt = {
             .vtarget_mv  = 3300,
             .pin_dir_mask= 0x00,
-            .pullup_mode = HW_PROTOCOL_PULLUP_EXTERNAL,
-            .pullup_mask = 0x30,   /* GPIO 4 i 5 */
+            .pullup_mode = HW_PROTOCOL_PULLUP_NONE,
+            .pullup_mask = 0x00,
         };
         if (session_set_target(&s, &tgt)) goto cleanup;
     }

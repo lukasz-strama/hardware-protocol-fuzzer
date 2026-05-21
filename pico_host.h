@@ -2,7 +2,9 @@
 #define PICO_HOST_H
 
 #define _POSIX_C_SOURCE 200809L
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -43,8 +45,8 @@ typedef enum {
     MSG_ERROR            = 0x70,
 } msg_type_t;
 
-#define FRAME_MAGIC_0  0xAA
-#define FRAME_MAGIC_1  0x55
+#define FRAME_MAGIC_0  0x55
+#define FRAME_MAGIC_1  0xAA
 
 // Bufor ramki roboczej
 #define TX_BUF_CAP  (HW_PROTOCOL_HEADER_SIZE + HW_PROTOCOL_MAX_PENDING_STIMULUS_BYTES + 64u)
@@ -74,6 +76,13 @@ typedef struct {
     uint64_t frames_tx;
     uint64_t frames_rx;
     uint64_t crc_errors;
+
+    // callback do integracji z UI / innym klientem
+    void *callback_user_data;
+    void (*on_frame)(void *user_data,
+                     const hw_protocol_frame_header_t *hdr,
+                     const uint8_t *payload,
+                     size_t payload_len);
 } pico_session_t;
 
 // Wynik operacji

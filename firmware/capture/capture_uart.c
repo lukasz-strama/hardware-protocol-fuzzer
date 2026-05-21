@@ -50,7 +50,7 @@ void capture_uart_init(uint8_t rx_pin, uint32_t baud) {
 void capture_uart_poll(void) {
     while (!pio_sm_is_rx_fifo_empty(uart_pio, sm_uart)) {
         uint32_t raw  = pio_sm_get(uart_pio, sm_uart);
-        uint8_t  byte = (uint8_t)(raw & 0xFF);
+        uint8_t  byte = (uint8_t)(raw >> 24);
         printf("UART BYTE: %02X\n", byte);
 
         trace_emit(time_us_32(), TRACE_SOURCE_UART, TRACE_EVENT_BYTE, &byte, 1);
