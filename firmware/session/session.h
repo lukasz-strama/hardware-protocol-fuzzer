@@ -25,13 +25,9 @@ typedef struct {
     uint8_t  i2c_sda_pin;
     uint8_t  i2c_scl_pin;
 
-    uint16_t vtarget_mv;
-    uint8_t  pullup_mode;
-    uint8_t  pullup_mask;
-
-    bool     fuzz_mode;
-    bool     fuzz_policy_ready;
-    hw_protocol_set_fuzz_policy_t fuzz_policy;
+    uint16_t vtarget_mv;    
+    uint8_t  pullup_mode;   
+    uint8_t  pullup_mask;   
 } sniffer_session_t;
 
 extern sniffer_session_t g_session;
@@ -41,9 +37,7 @@ void     session_handle_set_bus(const uint8_t *payload);
 void     session_handle_set_target(const uint8_t *payload);
 void     session_handle_arm(uint16_t session_id);
 void     session_handle_start_capture(void);
-bool     session_handle_set_fuzz_policy(const uint8_t *payload, uint16_t len);
-void     session_handle_start_fuzz(void);
 uint32_t session_handle_stop(void);
-void     session_handle_disarm(void);
+void     session_handle_disarm(void);  
 
 #endif
