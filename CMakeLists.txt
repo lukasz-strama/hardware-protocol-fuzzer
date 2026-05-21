@@ -44,6 +44,8 @@ add_executable(Pico_Sniffer
     firmware/utils/timestamp.c
     firmware/capture/trace_encoder.c
     firmware/usb/usb_descriptors.c
+    firmware/fuzz/fuzz_engine.c
+    firmware/fuzz/fuzz_uart_tx.c
     uart_selftest.c
 )
 
@@ -57,6 +59,7 @@ target_include_directories(Pico_Sniffer PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/firmware/capture
     ${CMAKE_CURRENT_LIST_DIR}/firmware/ringbuffer
     ${CMAKE_CURRENT_LIST_DIR}/firmware/utils
+    ${CMAKE_CURRENT_LIST_DIR}/firmware/fuzz
 )
 
 target_link_libraries(Pico_Sniffer
