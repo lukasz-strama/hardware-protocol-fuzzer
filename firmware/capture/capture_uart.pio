@@ -1,7 +1,4 @@
 .program uart_sniffer
-
-    ; Program nie używa side-set, więc usuwamy deklarację .side_set dla czystości
-
 public start:
 wait_start:
     wait 0 pin 0        ; Czekaj na zbocze opadające (Start Bit)
