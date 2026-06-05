@@ -1,3 +1,13 @@
+/**
+ * @file protocol.h
+ * @brief Interfejs warstwy transportowej protokołu oraz parsera ramek.
+ *
+ * Zawiera:
+ * - definicje typów wiadomości,
+ * - API do wysyłania ramek,
+ * - maszynę stanów parsera,
+ * - struktury pomocnicze.
+ */
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
@@ -40,7 +50,15 @@
 #define MSG_TYPE_ERROR              0x70
 #define MSG_TYPE_COUNTERS           0x71
 
-
+/**
+ * @brief Wysyła ramkę protokołu.
+ *
+ * @param type Typ wiadomości.
+ * @param session_id Identyfikator sesji.
+ * @param sequence Numer sekwencyjny.
+ * @param payload Dane payloadu.
+ * @param payload_len Długość payloadu.
+ */
 void protocol_send_frame(
     uint8_t type, 
     uint16_t session_id, 
@@ -48,6 +66,10 @@ void protocol_send_frame(
     const uint8_t* payload, 
     size_t payload_len);
 
+
+/**
+ * @brief Stany parsera protokołu.
+ */
     typedef enum {
         STATE_WAIT_MAGIC1, 
         STATE_WAIT_MAGIC2,
@@ -55,6 +77,10 @@ void protocol_send_frame(
         STATE_READ_PAYLOAD
     }rx_state_t;
 
+
+/**
+ * @brief Parser bajt-po-bajcie dla ramek protokołu.
+ */
     typedef struct {
     rx_state_t state;
     uint8_t header_buffer[sizeof(hw_protocol_frame_header_t)];
@@ -63,9 +89,16 @@ void protocol_send_frame(
     size_t payload_bytes_read;
 } protocol_parser_t;
 
-
+/**
+ * @brief Inicjalizuje parser.
+ */
 void protocol_parser_init(protocol_parser_t *parser);
 
+/**
+ * @brief Przetwarza pojedynczy bajt strumienia danych.
+ *
+ * @return true jeśli ramka została poprawnie zdekodowana.
+ */
 bool protocol_parse_byte(protocol_parser_t *parser, uint8_t byte, hw_protocol_frame_header_t *out_header, uint8_t *out_payload);
 
 #endif

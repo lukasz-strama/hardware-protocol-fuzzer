@@ -1,3 +1,11 @@
+/**
+ * @file protocol_handlers.c
+ * @brief Implementacja handlerów komend protokołu urządzenia.
+ *
+ * Każda funkcja w tym module odpowiada za obsługę konkretnego typu
+ * wiadomości protokołu. Handlery wykonują logikę biznesową, aktualizują
+ * stan sesji oraz wysyłają odpowiednie ramki odpowiedzi.
+ */
 #include "protocol_handlers.h"
 #include "protocol.h"
 #include "protocol_layout.h"
@@ -9,6 +17,19 @@
 #define HW_PROTOCOL_FW_SUPPORTS_CAPTURE (HW_PROTOCOL_FW_SUPPORTS_STREAMING)
 #endif
 
+/**
+ * @brief Obsługuje komendę GET_CAPS, zwraca możliwości firmware.
+ *
+ * Zwracane informacje obejmują:
+ * - rozmiary buforów,
+ * - wersję firmware i protokołu,
+ * - obsługiwane magistrale,
+ * - obsługiwane tryby (capture, fuzz),
+ * - liczbę dostępnych state machine PIO.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_get_caps(uint16_t session_id, uint32_t seq) {
     uint8_t buf[64];
     memset(buf, 0, sizeof(buf));
@@ -35,6 +56,17 @@ void handle_get_caps(uint16_t session_id, uint32_t seq) {
                         sizeof(hw_protocol_caps_response_t));
 }
 
+/**
+ * @brief Obsługuje komendę GET_STATUS, zwraca aktualny stan sesji.
+ *
+ * Zwracane informacje obejmują:
+ * - stan maszyny stanów,
+ * - liczbę zakolejkowanych bodźców fuzz,
+ * - błędy i flagi statusowe.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_get_status(uint16_t session_id, uint32_t seq) {
     hw_protocol_status_t st = {
         .rx_overruns     = 0,
@@ -55,6 +87,16 @@ void handle_get_status(uint16_t session_id, uint32_t seq) {
                         sizeof(st));
 }
 
+/**
+ * @brief Obsługuje komendę HELLO, negocjuje wersję protokołu.
+ *
+ * Ustawia stan sesji na CONNECTED i odsyła ramkę HELLO_ACK.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ * @param payload Nie używane.
+ * @param len Nie używane.
+ */
 void handle_hello(uint16_t session_id, uint32_t seq,
                   const uint8_t *payload, uint16_t len)
 {
@@ -79,6 +121,16 @@ void handle_hello(uint16_t session_id, uint32_t seq,
                         sizeof(ack));
 }
 
+/**
+ * @brief Obsługuje komendę ARM, przygotowuje urządzenie do pracy.
+ *
+ * Ustawia stan sesji na ARMED i odsyła ARM_OK.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ * @param payload Nie używane.
+ * @param len Nie używane.
+ */
 void handle_arm(uint16_t session_id, uint32_t seq,
                 const uint8_t *payload, uint16_t len)
 {
@@ -100,11 +152,29 @@ void handle_arm(uint16_t session_id, uint32_t seq,
                         sizeof(ok));
 }
 
+/**
+ * @brief Obsługuje komendę START_CAPTURE - uruchamia przechwytywanie.
+ *
+ * Po uruchomieniu capture odsyła aktualny STATUS.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_start_capture(uint16_t session_id, uint32_t seq) {
     session_handle_start_capture();
     handle_get_status(session_id, seq);
 }
 
+/**
+ * @brief Obsługuje komendę SET_FUZZ_POLICY, ustawia politykę fuzzingu.
+ *
+ * W przypadku błędu odsyła ramkę ERROR.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ * @param payload Dane polityki fuzz.
+ * @param len Długość danych.
+ */
 void handle_set_fuzz_policy(uint16_t session_id, uint32_t seq,
                              const uint8_t *payload, uint16_t len)
 {
@@ -124,6 +194,20 @@ void handle_set_fuzz_policy(uint16_t session_id, uint32_t seq,
     handle_get_status(session_id, seq);
 }
 
+/**
+ * @brief Obsługuje komendę QUEUE_STIMULUS, dodaje bodziec fuzz do kolejki.
+ *
+ * Waliduje:
+ * - czy urządzenie nie jest w stanie RUNNING,
+ * - czy kolejka fuzz nie jest pełna.
+ *
+ * W przypadku błędu odsyła ramkę ERROR.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ * @param payload Dane bodźca.
+ * @param len Długość danych.
+ */
 void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
                             const uint8_t *payload, uint16_t len)
 {
@@ -157,11 +241,27 @@ void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
     handle_get_status(session_id, seq);
 }
 
+/**
+ * @brief Obsługuje komendę START_FUZZ - uruchamia fuzzing.
+ *
+ * Po uruchomieniu odsyła STATUS.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_start_fuzz(uint16_t session_id, uint32_t seq) {
     session_handle_start_fuzz();
     handle_get_status(session_id, seq);
 }
 
+/**
+ * @brief Obsługuje komendę STOP - zatrzymuje capture lub fuzzing.
+ *
+ * Zwraca liczbę opróżnionych bajtów (drained_bytes).
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_stop(uint16_t session_id, uint32_t seq)
 {
     uint32_t drained = session_handle_stop();
@@ -180,12 +280,26 @@ void handle_stop(uint16_t session_id, uint32_t seq)
                         sizeof(ok));
 }
 
+/**
+ * @brief Obsługuje komendę DISARM, dezaktywuje urządzenie.
+ *
+ * Po dezaktywacji odsyła STATUS.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ */
 void handle_disarm(uint16_t session_id, uint32_t seq)
 {
     session_handle_disarm();
     handle_get_status(session_id, seq);
 }
 
+/**
+ * @brief Obsługuje komendę RESET_SESSION - resetuje stan sesji.
+ *
+ * @param session_id Ignorowane.
+ * @param seq Ignorowane.
+ */
 void handle_reset_session(uint16_t session_id, uint32_t seq)
 {
     (void)session_id;
@@ -193,6 +307,13 @@ void handle_reset_session(uint16_t session_id, uint32_t seq)
     session_init();
 }
 
+/**
+ * @brief Obsługuje nieznane typy wiadomości - odsyła ramkę ERROR.
+ *
+ * @param session_id Identyfikator sesji.
+ * @param seq Numer sekwencyjny ramki.
+ * @param type Nieznany typ wiadomości.
+ */
 void handle_unknown(uint16_t session_id, uint32_t seq, uint8_t type)
 {
     hw_protocol_error_t err = {

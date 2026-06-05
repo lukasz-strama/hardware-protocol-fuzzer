@@ -1,3 +1,14 @@
+/**
+ * @file session.h
+ * @brief Struktury i funkcje zarządzające stanem sesji sniffera.
+ *
+ * Sesja obejmuje:
+ * - konfigurację magistrali,
+ * - konfigurację targetu,
+ * - przejścia stanów protokołu,
+ * - obsługę capture (I2C/UART),
+ * - obsługę fuzzingu (UART).
+ */
 #ifndef SESSION_H
 #define SESSION_H
 
@@ -5,12 +16,18 @@
 #include <stdbool.h>
 #include "protocol_layout.h"
 
+/**
+ * @brief Typ magistrali aktywnej w sesji.
+ */
 typedef enum {
     TARGET_BUS_NONE = 0,
     TARGET_BUS_I2C  = 1,
     TARGET_BUS_UART = 2
 } target_bus_t;
 
+/**
+ * @brief Struktura przechowująca pełny stan sesji sniffera.
+ */
 typedef struct {
     hw_protocol_session_state_t current_state;
     hw_protocol_status_t status;   
@@ -34,6 +51,7 @@ typedef struct {
     hw_protocol_set_fuzz_policy_t fuzz_policy;
 } sniffer_session_t;
 
+/** Globalna instancja sesji. */
 extern sniffer_session_t g_session;
 
 void     session_init(void);
