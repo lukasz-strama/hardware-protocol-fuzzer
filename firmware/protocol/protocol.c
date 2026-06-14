@@ -1,9 +1,35 @@
+/**
+ * @file protocol.c
+ * @brief Implementacja warstwy transportowej protokołu oraz parsera ramek.
+ *
+ * Moduł odpowiada za:
+ * - budowanie ramek protokołu (nagłówek + payload),
+ * - obliczanie CRC16-CCITT-FALSE,
+ * - wysyłanie ramek przez warstwę USB,
+ * - parser bajt po bajcie z maszyną stanów,
+ * - walidację CRC i długości payloadu.
+ *
+ * Parser jest odporny na zakłócenia - w przypadku błędu wraca do stanu
+ * oczekiwania na MAGIC1.
+ */
 #include "protocol.h"
 #include "protocol_layout.h"
 #include <string.h>
 #include "usb_transport.h"
 
-
+/**
+ * @brief Implementacja CRC16-CCITT-FALSE.
+ *
+ * Parametry:
+ * - polinom: 0x1021
+ * - seed: 0xFFFF
+ * - brak odbicia bitów
+ *
+ * @param crc Wartość początkowa CRC.
+ * @param data Dane wejściowe.
+ * @param len Liczba bajtów.
+ * @return Zaktualizowana wartość CRC.
+ */
 static uint16_t local_crc16_ccitt_false(uint16_t crc, const uint8_t *data, size_t len) {
     for (size_t i = 0; i < len; i++) {
         crc ^= ((uint16_t)data[i] << 8);
@@ -18,6 +44,21 @@ static uint16_t local_crc16_ccitt_false(uint16_t crc, const uint8_t *data, size_
     return crc;
 }
 
+/**
+ * @brief Buduje i wysyła ramkę protokołu.
+ *
+ * Funkcja:
+ * - wypełnia nagłówek,
+ * - oblicza CRC16 nagłówka i payloadu,
+ * - kopiuje dane do bufora ramki,
+ * - wysyła ramkę przez USB.
+ *
+ * @param type Typ wiadomości (MSG_TYPE_xxx).
+ * @param session_id Identyfikator sesji.
+ * @param sequence Numer sekwencyjny ramki.
+ * @param payload Dane payloadu (może być NULL).
+ * @param payload_len Długość payloadu.
+ */
 void protocol_send_frame(
     uint8_t type,
     uint16_t session_id,
@@ -55,12 +96,42 @@ void protocol_send_frame(
     usb_transport_send(frame_buf, sizeof(hw_protocol_frame_header_t) + payload_len);
 }
 
+/**
+ * @brief Inicjalizuje parser protokołu.
+ *
+ * Ustawia parser w stan oczekiwania na pierwszy bajt MAGIC.
+ *
+ * @param parser Wskaźnik na parser.
+ */
 void protocol_parser_init(protocol_parser_t *parser) {
     parser->state = STATE_WAIT_MAGIC1;
     parser->header_bytes_read = 0;
     parser->payload_bytes_read = 0;
 }
 
+/**
+ * @brief Przetwarza pojedynczy bajt strumienia danych.
+ *
+ * Parser implementuje maszynę stanów:
+ * - WAIT_MAGIC1
+ * - WAIT_MAGIC2
+ * - READ_HEADER
+ * - READ_PAYLOAD
+ *
+ * Po zdekodowaniu kompletnej ramki:
+ * - kopiuje nagłówek do out_header,
+ * - kopiuje payload do out_payload,
+ * - weryfikuje CRC,
+ * - zwraca true.
+ *
+ * W przypadku błędu wraca do stanu WAIT_MAGIC1.
+ *
+ * @param parser Parser protokołu.
+ * @param byte Bajt wejściowy.
+ * @param out_header Bufor na nagłówek.
+ * @param out_payload Bufor na payload.
+ * @return true jeśli ramka została poprawnie zdekodowana.
+ */
 bool protocol_parse_byte(
     protocol_parser_t *parser,
     uint8_t byte,

@@ -1,3 +1,9 @@
+/**
+ * @file protocol_handlers.h
+ * @brief Deklaracje handlerów komend protokołu urządzenia.
+ *
+ * Każda funkcja odpowiada za obsługę jednej komendy protokołu.
+ */
 #ifndef PROTOCOL_HANDLERS_H
 #define PROTOCOL_HANDLERS_H
 

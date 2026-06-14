@@ -1,0 +1,39 @@
+.program i2c_data
+.wrap_target
+    wait 1 irq 4 rel
+    set x, 7
+bitloop:
+    wait 0 pin 1
+    wait 1 pin 1
+    in pins, 1
+    jmp x-- bitloop
+
+    wait 0 pin 1
+    wait 1 pin 1
+    in pins, 1
+    push noblock
+    wait 0 pin 1
+.wrap
+
+.program i2c_conditions
+.wrap_target
+idle:
+    set y, 0
+    wait 1 pin 0
+    wait 1 pin 1
+detect:
+    jmp pin scl_high
+    wait 1 pin 1
+    jmp detect
+scl_high:
+    jmp pin sda_high
+    irq nowait 0
+    irq nowait 4 rel
+    set y, 1
+    wait 0 pin 1
+    jmp detect
+sda_high:
+    jmp !y idle
+    irq nowait 1
+    jmp idle
+.wrap
