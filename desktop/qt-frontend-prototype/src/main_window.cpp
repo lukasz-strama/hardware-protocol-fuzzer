@@ -538,25 +538,21 @@ QGroupBox *MainWindow::buildTracePanel()
 
 QGroupBox *MainWindow::buildFuzzerPanel()
 {
-    auto *panel = new QGroupBox("Fuzzer Control");
+    auto *panel = new QGroupBox("Fuzzing");
     auto *layout = new QVBoxLayout(panel);
     layout->setSpacing(12);
     layout->setContentsMargins(12, 12, 12, 12);
 
-    /* ── Bus & Mode ──────────────────────────────────────────── */
-    attackCombo_ = new DropdownComboBox;
-    attackCombo_->addItems({"Raw bytes", "Address sweep", "Boundary values", "Random bytes"});
-    configureComboBox(attackCombo_);
+    layout->addWidget(smallLabel("UART-only for now. The panel exposes the two working fuzz modes and a small corpus."));
 
-    selectionCombo_ = new DropdownComboBox;
-    selectionCombo_->addItems({"Sequential", "Random", "Corpus-guided"});
-    configureComboBox(selectionCombo_);
+    fuzzModeCombo_ = new DropdownComboBox;
+    fuzzModeCombo_->addItems({"Sequential once", "Random repeat"});
+    configureComboBox(fuzzModeCombo_);
 
     budgetEdit_ = new QLineEdit("5000");
     stimulusEdit_ = new QLineEdit("A0 00 FF 13 37");
 
-    layout->addWidget(formRow("Attack", attackCombo_));
-    layout->addWidget(formRow("Selection", selectionCombo_));
+    layout->addWidget(formRow("Mode", fuzzModeCombo_));
     layout->addWidget(formRow("Budget ms", budgetEdit_));
 
     /* ── Separator ────────────────────────────────────────────── */
@@ -567,29 +563,17 @@ QGroupBox *MainWindow::buildFuzzerPanel()
     layout->addWidget(sep1);
 
     /* ── Policy flags (checkboxes) ────────────────────────────── */
-    auto *flagsLabel = smallLabel("Mutation & Error Injection");
+    auto *flagsLabel = smallLabel("Mutations");
     layout->addWidget(flagsLabel);
 
-    bitFlipCheck_          = new QCheckBox("Bit flip");
-    truncateCheck_         = new QCheckBox("Truncate");
-    corruptParityCheck_    = new QCheckBox("Corrupt parity (UART)");
-    badStopCheck_          = new QCheckBox("Bad stop bit (UART)");
-    timingDistortCheck_    = new QCheckBox("Timing distort (UART)");
-    i2cSkipAckCheck_       = new QCheckBox("Skip ACK (I2C)");
-    i2cRepeatedStartCheck_ = new QCheckBox("Repeated START (I2C)");
-    i2cClockStretchCheck_  = new QCheckBox("Clock stretch (I2C)");
+    bitFlipCheck_  = new QCheckBox("Bit flip");
+    truncateCheck_  = new QCheckBox("Truncate");
 
     auto *flagsGrid = new QGridLayout;
     flagsGrid->setSpacing(6);
     flagsGrid->setContentsMargins(0, 0, 0, 0);
     flagsGrid->addWidget(bitFlipCheck_, 0, 0);
     flagsGrid->addWidget(truncateCheck_, 0, 1);
-    flagsGrid->addWidget(corruptParityCheck_, 1, 0);
-    flagsGrid->addWidget(badStopCheck_, 1, 1);
-    flagsGrid->addWidget(timingDistortCheck_, 2, 0);
-    flagsGrid->addWidget(i2cSkipAckCheck_, 2, 1);
-    flagsGrid->addWidget(i2cRepeatedStartCheck_, 3, 0);
-    flagsGrid->addWidget(i2cClockStretchCheck_, 3, 1);
     layout->addLayout(flagsGrid);
 
     /* ── Separator ────────────────────────────────────────────── */
@@ -939,7 +923,7 @@ void MainWindow::updateControlAvailability()
 
     const QList<QWidget *> configWidgets = {
         protocolCombo_, portCombo_, baudrateCombo_, parityCombo_, pinAEdit_, pinBEdit_, vtargetCombo_,
-        attackCombo_, selectionCombo_, stimulusEdit_, budgetEdit_
+        fuzzModeCombo_, stimulusEdit_, budgetEdit_
     };
     for (auto *widget : configWidgets) {
         if (widget) {
@@ -1110,6 +1094,7 @@ void MainWindow::addGeneratedFuzzFrame()
 {
     ++sequence_;
     const int stimulusId = sequence_;
+    const QString fuzzMode = fuzzModeCombo_ ? fuzzModeCombo_->currentText() : QString("Sequential once");
     addTraceRecord({
         sequence_,
         currentTimestamp(),
@@ -1117,7 +1102,7 @@ void MainWindow::addGeneratedFuzzFrame()
         "FUZZ_TX",
         byteCountForData(stimulusEdit_->text()),
         QString("id=%1 %2").arg(stimulusId).arg(stimulusEdit_->text()),
-        QString("%1, %2").arg(attackCombo_->currentText(), selectionCombo_->currentText())
+        fuzzMode
     });
 
     if (stimulusId % 4 == 0) {
@@ -1356,23 +1341,22 @@ void MainWindow::runFuzzSession()
         return;
     }
 
-    /* Build policy flags from checkboxes */
+    /* Build policy flags from the small set of real mutations we keep */
     uint8_t policyFlags = 0;
     if (bitFlipCheck_ && bitFlipCheck_->isChecked())           policyFlags |= (1u << 0);
     if (truncateCheck_ && truncateCheck_->isChecked())         policyFlags |= (1u << 1);
-    if (corruptParityCheck_ && corruptParityCheck_->isChecked()) policyFlags |= (1u << 2);
-    if (badStopCheck_ && badStopCheck_->isChecked())           policyFlags |= (1u << 3);
-    if (timingDistortCheck_ && timingDistortCheck_->isChecked()) policyFlags |= (1u << 4);
-    if (i2cSkipAckCheck_ && i2cSkipAckCheck_->isChecked())     policyFlags |= (1u << 5);
-    if (i2cRepeatedStartCheck_ && i2cRepeatedStartCheck_->isChecked()) policyFlags |= (1u << 6);
-    if (i2cClockStretchCheck_ && i2cClockStretchCheck_->isChecked())   policyFlags |= (1u << 7);
 
-    uint8_t busType = (protocolCombo_->currentText() == "UART") ? 1 : 0;
-    uint8_t selMode = static_cast<uint8_t>(selectionCombo_->currentIndex());
+    uint8_t selectionMode = 0;
+    uint8_t repeatMode = 0;
+    if (fuzzModeCombo_ && fuzzModeCombo_->currentIndex() == 1) {
+        selectionMode = 1;
+        repeatMode = 1;
+    }
+
     uint32_t budgetMs = budgetEdit_->text().toUInt();
 
     fuzzOrchestrator_->startSession(
-        corpusEntries_, busType, selMode, 0 /* once */, policyFlags, budgetMs);
+        corpusEntries_, 1 /* UART */, selectionMode, repeatMode, policyFlags, budgetMs);
 }
 
 void MainWindow::stopFuzzSession()

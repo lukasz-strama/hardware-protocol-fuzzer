@@ -119,8 +119,6 @@ private:
     QComboBox *i2cSpeedCombo_ = nullptr;
     QComboBox *pullupCombo_ = nullptr;
     QComboBox *vtargetCombo_ = nullptr;
-    QComboBox *attackCombo_ = nullptr;
-    QComboBox *selectionCombo_ = nullptr;
     QLineEdit *i2cAddressEdit_ = nullptr;
     QLineEdit *pinAEdit_ = nullptr;
     QLineEdit *pinBEdit_ = nullptr;
@@ -156,14 +154,9 @@ private:
     QPushButton *removeCorpusButton_ = nullptr;
     QPushButton *clearResultsButton_ = nullptr;
     QLabel *fuzzStatsLabel_ = nullptr;
+    QComboBox *fuzzModeCombo_ = nullptr;
     QCheckBox *bitFlipCheck_ = nullptr;
     QCheckBox *truncateCheck_ = nullptr;
-    QCheckBox *corruptParityCheck_ = nullptr;
-    QCheckBox *badStopCheck_ = nullptr;
-    QCheckBox *timingDistortCheck_ = nullptr;
-    QCheckBox *i2cSkipAckCheck_ = nullptr;
-    QCheckBox *i2cRepeatedStartCheck_ = nullptr;
-    QCheckBox *i2cClockStretchCheck_ = nullptr;
     QVector<CorpusEntry> corpusEntries_;
 };
 
