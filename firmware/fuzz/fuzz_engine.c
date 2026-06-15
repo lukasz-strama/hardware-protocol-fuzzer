@@ -62,6 +62,10 @@ static fuzz_policy_t s_policy;
 static bool          s_running;
 static uint32_t      s_start_us;
 static uint32_t      s_trace_seq;  /**< Sequence counter for FUZZ_TX frames. */
+static bool          s_drain_pending;
+static uint32_t      s_drain_start_us;
+
+#define FUZZ_DRAIN_DELAY_US 200000u
 
 /* ── PRNG ───────────────────────────────────────────────────────── */
 
@@ -154,6 +158,8 @@ void fuzz_engine_init(void)
     s_running   = false;
     s_start_us  = 0;
     s_trace_seq = 0;
+    s_drain_pending = false;
+    s_drain_start_us = 0;
     s_prng      = 0x12345678u ^ time_us_32();
 }
 
@@ -179,6 +185,8 @@ bool fuzz_engine_set_policy(const uint8_t *payload, uint16_t len)
 
     /* Reset queue state — new policy means new session, clear stale data */
     memset(&s_queue, 0, sizeof(s_queue));
+    s_drain_pending = false;
+    s_drain_start_us = 0;
 
     s_policy.time_budget_ms = time_budget_ms;
     s_policy.pending_bytes  = pending_bytes;
@@ -232,6 +240,8 @@ void fuzz_engine_start(void)
     s_running  = true;
     s_start_us = time_us_32();
     s_queue.repeat_cursor = 0;
+    s_drain_pending = false;
+    s_drain_start_us = 0;
 
     /* Initialise the appropriate bus transmitter */
     if (g_session.active_bus == TARGET_BUS_UART) {
@@ -246,6 +256,8 @@ void fuzz_engine_stop(void)
 {
     if (!s_running) return;
     s_running = false;
+    s_drain_pending = false;
+    s_drain_start_us = 0;
 
     if (g_session.active_bus == TARGET_BUS_UART) {
         fuzz_uart_tx_deinit();
@@ -274,7 +286,25 @@ void fuzz_engine_task(void)
         }
     }
 
-    if (s_queue.count == 0) return;
+    if (s_queue.count == 0) {
+        if (!s_drain_pending) {
+            s_drain_pending = true;
+            s_drain_start_us = time_us_32();
+            return;
+        }
+
+        if ((uint32_t)(time_us_32() - s_drain_start_us) < FUZZ_DRAIN_DELAY_US) {
+            return;
+        }
+
+        s_drain_pending = false;
+        fuzz_engine_stop();
+        session_handle_stop();
+        handle_get_status(g_session.session_id, 0);
+        return;
+    }
+
+    s_drain_pending = false;
 
     /* ── Select entry ───────────────────────────────────────────── */
     uint8_t pick;

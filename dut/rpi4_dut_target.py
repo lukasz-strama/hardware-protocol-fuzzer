@@ -16,6 +16,7 @@ Usage:
     python3 rpi4_dut_target.py --port /dev/ttyAMA0      # explicit port
     python3 rpi4_dut_target.py --baud 115200             # match fuzzer baud
     python3 rpi4_dut_target.py --quiet                   # less output
+    python3 rpi4_dut_target.py --chaos                  # enable intentional bugs
 
 Behavior:
     The DUT reads raw bytes from the fuzzer and responds based on:
@@ -26,7 +27,7 @@ Behavior:
     It replies with 1..N bytes per received chunk so the Pico's capture
     sniffer sees TRACE_DECODED responses correlated with FUZZ_TX stimuli.
 
-Intentional bugs for fuzzer to discover:
+Intentional bugs for fuzzer to discover (disabled by default):
     1. Crash magic:   0xDE 0xAD 0xBE 0xEF → target stops responding for 2s
     2. Auth bypass:    0x05 0x00 0x00 0x00 0x00 → unlocks dump command
     3. Buffer overrun: >40 bytes in single chunk to reg 0x0F → canary corrupt
@@ -125,7 +126,7 @@ class TrafficLog:
 # ── Core: process one chunk of received bytes ────────────────────────
 
 def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
-                  verbose: bool):
+                  verbose: bool, chaos: bool):
     """
     Process a raw chunk of bytes from the fuzzer.
     Respond over UART so the sniffer captures the exchange.
@@ -140,7 +141,7 @@ def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
     tag = ""
 
     # ── Bug #1: Crash magic anywhere in chunk ────────────────────
-    if CRASH_MAGIC in data:
+    if chaos and CRASH_MAGIC in data:
         state.crashes += 1
         tag = "CRASH"
         resp = b"\xDE\xAD"
@@ -156,7 +157,7 @@ def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
         return
 
     # ── Bug #2: Auth bypass sequence ─────────────────────────────
-    if AUTH_BYPASS_SEQ in data:
+    if chaos and AUTH_BYPASS_SEQ in data:
         state.authed = True
         state.auth_bypass += 1
         tag = "AUTH_BYPASS"
@@ -198,10 +199,23 @@ def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
     elif cmd == 0x02:
         idx = data[1] if n > 1 else 0
         # Bug #5: wrap silently instead of rejecting
-        if idx >= NUM_REGISTERS:
+        if chaos and idx >= NUM_REGISTERS:
             state.wraps += 1
             tag = "REG_WRAP"
-        idx = idx % NUM_REGISTERS
+            idx = idx % NUM_REGISTERS
+        elif idx >= NUM_REGISTERS:
+            tag = "READ_NACK"
+            resp = b"\x15"
+            ser.write(resp)
+            state.tx_bytes += len(resp)
+            state.nack_count += 1
+            ser.flush()
+            log.log("RX", data, resp, tag)
+            if verbose:
+                print(f"  {C.YLW}✗ {tag:12s} in={data[:20].hex().upper():42s} out={resp.hex().upper()}{C.RST}")
+            return
+        else:
+            idx = idx % NUM_REGISTERS
         reg_data = bytes(state.regs[idx][:8])  # return first 8 bytes
         resp = b"\x06" + bytes([idx]) + reg_data
         ser.write(resp)
@@ -215,14 +229,14 @@ def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
         idx = data[1]
         write_data = data[2:]
 
-        if idx >= NUM_REGISTERS and idx != 0x0F:
+        if idx >= NUM_REGISTERS and (not chaos or idx != 0x0F):
             # NACK for out-of-range (but not 0x0F, that's the bug path)
             tag = "WRITE_NACK"
             resp = b"\x15"
             ser.write(resp)
             state.tx_bytes += len(resp)
             state.nack_count += 1
-        elif idx == 0x0F and len(write_data) > REG_SIZE:
+        elif chaos and idx == 0x0F and len(write_data) > REG_SIZE:
             # Bug #3: buffer overrun into canary
             state.overflows += 1
             tag = "OVERFLOW"
@@ -291,10 +305,14 @@ def process_chunk(data: bytes, state: DUTState, ser, log: TrafficLog,
     # 0x10: ECHO with amplification (Bug #4)
     elif cmd == 0x10:
         echo_data = data[1:] if n > 1 else data
-        # Bug #4: echo back 2× the data (amplification attack surface)
-        resp = b"\x06" + echo_data + echo_data
-        state.amplifies += 1
-        tag = "ECHO_AMP"
+        if chaos:
+            # Bug #4: echo back 2× the data (amplification attack surface)
+            resp = b"\x06" + echo_data + echo_data
+            state.amplifies += 1
+            tag = "ECHO_AMP"
+        else:
+            resp = b"\x06" + echo_data
+            tag = "ECHO"
         ser.write(resp)
         state.tx_bytes += len(resp)
         state.ack_count += 1
@@ -368,7 +386,7 @@ def print_stats(s: DUTState):
 
 # ── Main loop ────────────────────────────────────────────────────────
 
-def run(port: str, baud: int, verbose: bool):
+def run(port: str, baud: int, verbose: bool, chaos: bool):
     print(f"""
 {C.CYN}{C.B}╔══════════════════════════════════════════════════════════════╗
 ║          DUT Target — Hardware Protocol Fuzzer               ║
@@ -376,7 +394,7 @@ def run(port: str, baud: int, verbose: bool):
 ╚══════════════════════════════════════════════════════════════╝{C.RST}
 
 {C.DIM}Mode:  Raw byte-stream (no framing required)
-Bugs:  5 discoverable (crash, auth bypass, overflow, echo amp, wrap)
+Bugs:  {'enabled' if chaos else 'disabled by default'}
 Log:   /tmp/dut_logs/dut_*.csv{C.RST}
 """)
 
@@ -416,7 +434,7 @@ Log:   /tmp/dut_logs/dut_*.csv{C.RST}
                 continue
 
             if data:
-                process_chunk(data, state, ser, log, verbose)
+                process_chunk(data, state, ser, log, verbose, chaos)
 
             # Periodic stats
             now = time.monotonic()
@@ -450,8 +468,10 @@ Wiring:
                    help="Baud rate — must match fuzzer (default: 9600)")
     p.add_argument("--quiet", action="store_true",
                    help="Suppress per-chunk output")
+    p.add_argument("--chaos", action="store_true",
+                   help="Enable intentional bug behaviors")
     args = p.parse_args()
-    run(args.port, args.baud, verbose=not args.quiet)
+    run(args.port, args.baud, verbose=not args.quiet, chaos=args.chaos)
 
 
 if __name__ == "__main__":

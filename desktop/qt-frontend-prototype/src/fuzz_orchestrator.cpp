@@ -3,6 +3,8 @@
 #include "backend_bridge.h"
 
 #include <QElapsedTimer>
+#include <QCoreApplication>
+#include <QThread>
 
 extern "C" {
 #include "pico_host.h"
@@ -111,7 +113,6 @@ void FuzzOrchestrator::stopSession()
     if (!running_) return;
 
     pumpTimer_->stop();
-    running_ = false;
 
     /* Send STOP — may fail if firmware already auto-stopped (queue drained
        or time budget expired), which is fine. */
@@ -121,6 +122,18 @@ void FuzzOrchestrator::stopSession()
     } else {
         emit logMessage("[fuzz] STOP not sent (firmware may have auto-stopped)");
     }
+
+     /* Give late TRACE_DECODED frames a wider window to arrive before
+         finalising pending stimuli as TIMEOUT.
+         The firmware can drain the queue and return to ARMED before the
+         DUT reply has fully propagated through capture + USB CDC. */
+     for (int i = 0; i < 40; ++i) {
+        backend_->pump();
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        QThread::msleep(2);
+    }
+
+    running_ = false;
 
     model_->finaliseTimeouts();
 

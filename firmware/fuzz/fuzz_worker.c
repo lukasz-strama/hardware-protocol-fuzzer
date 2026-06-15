@@ -18,6 +18,12 @@
 #include "protocol/protocol.h"
 #include "pico/stdlib.h"
 
+/* The desktop already owns corpus selection for this workflow.
+ * Keep the Core 1 built-in corpus generator disabled unless we
+ * explicitly want standalone autonomous fuzzing.
+ */
+#define ENABLE_INTERNAL_FUZZ_CORPUS 0
+
 /* Global orchestrator instance (persistent across Core 1 loop iterations) */
 static fuzzer_orchestrator_t g_orchestrator;
 static bool g_orchestrator_initialized = false;
@@ -71,13 +77,18 @@ void fuzz_worker_task(void) {
             continue;
         }
         
-        /* Start orchestrator on first RUNNING entry */
+        /* Desktop-driven fuzzing: only service the queue that was already
+         * populated by QUEUE_STIMULUS frames. Do not add a second autonomous
+         * corpus stream here, otherwise the transmitted bytes no longer match
+         * the GUI list.
+         */
+#if ENABLE_INTERNAL_FUZZ_CORPUS
         if (!g_orchestrator.active) {
             fuzzer_orchestrator_start(&g_orchestrator);
         }
-        
-        /* Generate new mutations and queue stimuli */
+
         fuzzer_orchestrator_task(&g_orchestrator);
+#endif
         
         /* Process fuzz engine (dequeues and transmits) */
         fuzz_engine_task();

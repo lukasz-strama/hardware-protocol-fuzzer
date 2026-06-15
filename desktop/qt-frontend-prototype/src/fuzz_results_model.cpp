@@ -76,6 +76,27 @@ QVariant FuzzResultsModel::headerData(int section, Qt::Orientation orientation, 
 void FuzzResultsModel::addStimulusSent(int stimulusId, quint32 traceSeq,
                                         const QString &dataHex)
 {
+    if (!pendingResponses_.isEmpty()) {
+        PendingResponse pending = pendingResponses_.dequeue();
+
+        FuzzResult r;
+        r.stimulusId = stimulusId;
+        r.traceSeq   = traceSeq;
+        r.sentData   = dataHex;
+        r.responseEvent       = pending.event;
+        r.responseData        = pending.dataHex;
+        r.responseTimestampUs = pending.timestampUs;
+        r.verdict             = (pending.event == "NACK") ? "NACK"
+                              : (pending.event == "OVERFLOW") ? "ERROR"
+                              : "OK";
+
+        beginInsertRows(QModelIndex(), results_.size(), results_.size());
+        results_.append(r);
+        endInsertRows();
+        return;
+    }
+
+    const int rowIndex = results_.size();
     FuzzResult r;
     r.stimulusId = stimulusId;
     r.traceSeq   = traceSeq;
@@ -84,39 +105,51 @@ void FuzzResultsModel::addStimulusSent(int stimulusId, quint32 traceSeq,
 
     beginInsertRows(QModelIndex(), results_.size(), results_.size());
     results_.append(r);
-    pendingMatchIndex_ = results_.size() - 1;
     endInsertRows();
+
+    pendingStimuli_.enqueue(PendingStimulus{stimulusId, traceSeq, rowIndex, dataHex});
 }
 
 void FuzzResultsModel::addResponse(quint32 traceSeq, const QString &event,
                                     const QString &dataHex, quint32 timestampUs)
 {
-    /* Try to match with the most recent unmatched stimulus.
-     * Simple heuristic: match sequentially — the first TRACE_DECODED
-     * after a FUZZ_TX belongs to that stimulus.
-     */
-    int matchIdx = -1;
+    if (!pendingStimuli_.isEmpty()) {
+        PendingStimulus pendingStimulus = pendingStimuli_.dequeue();
 
-    /* Search backwards for a PENDING entry */
-    for (int i = results_.size() - 1; i >= 0; --i) {
-        if (results_[i].verdict == "PENDING") {
-            matchIdx = i;
-            break;
+        if (pendingStimulus.rowIndex >= 0 && pendingStimulus.rowIndex < results_.size()) {
+            FuzzResult &r = results_[pendingStimulus.rowIndex];
+            r.stimulusId = pendingStimulus.stimulusId;
+            r.traceSeq   = pendingStimulus.traceSeq;
+            r.responseEvent       = event;
+            r.responseData        = dataHex;
+            r.responseTimestampUs = timestampUs;
+            r.verdict             = (event == "NACK") ? "NACK"
+                                  : (event == "OVERFLOW") ? "ERROR"
+                                  : "OK";
+
+            emit dataChanged(index(pendingStimulus.rowIndex, 0),
+                             index(pendingStimulus.rowIndex, ColumnCount - 1));
+            return;
         }
+
+        FuzzResult r;
+        r.stimulusId = pendingStimulus.stimulusId;
+        r.traceSeq   = pendingStimulus.traceSeq;
+        r.sentData   = pendingStimulus.dataHex;
+        r.responseEvent       = event;
+        r.responseData        = dataHex;
+        r.responseTimestampUs = timestampUs;
+        r.verdict             = (event == "NACK") ? "NACK"
+                              : (event == "OVERFLOW") ? "ERROR"
+                              : "OK";
+
+        beginInsertRows(QModelIndex(), results_.size(), results_.size());
+        results_.append(r);
+        endInsertRows();
+        return;
     }
 
-    if (matchIdx < 0) return;  /* no pending stimulus to match */
-
-    FuzzResult &r = results_[matchIdx];
-    r.responseEvent       = event;
-    r.responseData        = dataHex;
-    r.responseTimestampUs = timestampUs;
-
-    if (event == "NACK")         r.verdict = "NACK";
-    else if (event == "OVERFLOW") r.verdict = "ERROR";
-    else                          r.verdict = "OK";
-
-    emit dataChanged(index(matchIdx, 0), index(matchIdx, ColumnCount - 1));
+    pendingResponses_.enqueue(PendingResponse{event, dataHex, timestampUs});
 }
 
 void FuzzResultsModel::finaliseTimeouts()
@@ -128,14 +161,14 @@ void FuzzResultsModel::finaliseTimeouts()
             emit dataChanged(index(i, 0), index(i, ColumnCount - 1));
         }
     }
-    pendingMatchIndex_ = -1;
 }
 
 void FuzzResultsModel::clear()
 {
     beginResetModel();
     results_.clear();
-    pendingMatchIndex_ = -1;
+    pendingStimuli_.clear();
+    pendingResponses_.clear();
     endResetModel();
 }
 

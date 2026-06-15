@@ -2,6 +2,7 @@
 #define FUZZ_RESULTS_MODEL_H
 
 #include <QAbstractTableModel>
+#include <QQueue>
 #include <QVector>
 #include <QString>
 
@@ -84,8 +85,22 @@ public:
     int errorCount() const;
 
 private:
+    struct PendingResponse {
+        QString event;
+        QString dataHex;
+        quint32 timestampUs = 0;
+    };
+
+    struct PendingStimulus {
+        int stimulusId = 0;
+        quint32 traceSeq = 0;
+        int rowIndex = -1;
+        QString dataHex;
+    };
+
     QVector<FuzzResult> results_;
-    int pendingMatchIndex_ = -1;  ///< Index of the last unmatched stimulus
+    QQueue<PendingStimulus> pendingStimuli_;
+    QQueue<PendingResponse> pendingResponses_;
 };
 
 #endif // FUZZ_RESULTS_MODEL_H

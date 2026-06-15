@@ -27,24 +27,29 @@ static bool build_stimulus_payload(const fuzzer_corpus_entry_t *entry,
         return false;
     }
     
-    /* QUEUE_STIMULUS payload format:
-     *   Offset 0-7:   8-byte header (flags, reserved, etc.)
-     *   Offset 8+:    Inline stimulus data
-     *
-     * We assume a simple format: [flags(1), reserved(7), data...]
-     */
-    
     uint16_t max_payload = 512; /* Should match protocol limits */
     
     if (8 + mutated_len > max_payload) {
         return false;
     }
     
-    /* Build 8-byte header */
-    payload[0] = 0x00; /* flags: normal stimulus */
-    memset(&payload[1], 0x00, 7); /* reserved */
-    
-    /* Copy mutated data */
+    /* Build 8-byte header in the exact layout fuzz_engine_queue_stimulus()
+     * expects:
+     *   0..3  stimulus_id (u32 LE)
+     *   4..5  data_len     (u16 LE)
+     *   6     stimulus_flags
+     *   7     stimulus_kind
+     */
+    payload[0] = (uint8_t)(entry->id & 0xFF);
+    payload[1] = (uint8_t)((entry->id >> 8) & 0xFF);
+    payload[2] = 0x00;
+    payload[3] = 0x00;
+    payload[4] = (uint8_t)(mutated_len & 0xFF);
+    payload[5] = (uint8_t)((mutated_len >> 8) & 0xFF);
+    payload[6] = 0x01; /* inline payload */
+    payload[7] = 0x00; /* raw_bytes */
+
+    /* Copy mutated data immediately after the fixed header */
     memcpy(&payload[8], entry->data, mutated_len);
     
     *payload_len = 8 + mutated_len;
