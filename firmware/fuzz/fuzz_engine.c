@@ -275,17 +275,6 @@ void fuzz_engine_task(void)
 {
     if (!s_running) return;
 
-    /* Time budget enforcement */
-    if (s_policy.time_budget_ms > 0) {
-        uint32_t elapsed_ms = (time_us_32() - s_start_us) / 1000u;
-        if (elapsed_ms >= s_policy.time_budget_ms) {
-            fuzz_engine_stop();
-            session_handle_stop();
-            handle_get_status(g_session.session_id, 0);
-            return;
-        }
-    }
-
     if (s_queue.count == 0) {
         if (!s_drain_pending) {
             s_drain_pending = true;
@@ -302,6 +291,17 @@ void fuzz_engine_task(void)
         session_handle_stop();
         handle_get_status(g_session.session_id, 0);
         return;
+    }
+
+    /* Time budget enforcement */
+    if (s_policy.time_budget_ms > 0) {
+        uint32_t elapsed_ms = (time_us_32() - s_start_us) / 1000u;
+        if (elapsed_ms >= s_policy.time_budget_ms) {
+            fuzz_engine_stop();
+            session_handle_stop();
+            handle_get_status(g_session.session_id, 0);
+            return;
+        }
     }
 
     s_drain_pending = false;
@@ -378,16 +378,19 @@ void fuzz_engine_task(void)
         s_queue.head = (uint8_t)((s_queue.head + 1u) % FUZZ_MAX_ENTRIES);
         s_queue.count--;
         if (s_queue.count == 0u) {
-            /* Reclaim pool and notify desktop */
+            /* Reclaim pool and let capture drain DUT responses before STOP.
+             *
+             * The target often replies only after the final byte of the
+             * final stimulus.  Stopping the session here disables capture
+             * before that reply can be sampled, so leave the session RUNNING
+             * and let the count==0 drain path above stop it after
+             * FUZZ_DRAIN_DELAY_US.
+             */
             s_queue.pool_used     = 0;
             s_queue.head          = 0;
             s_queue.repeat_cursor = 0;
-            
-            /* Transition back to ARMED state for next session */
-            fuzz_engine_stop();
-            session_handle_stop();
-            
-            handle_get_status(g_session.session_id, 0);
+            s_drain_pending       = true;
+            s_drain_start_us      = time_us_32();
         }
     }
 }
