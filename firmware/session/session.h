@@ -17,6 +17,12 @@
 #include "protocol_layout.h"
 
 /**
+ * @brief Timeouts (in microseconds).
+ */
+#define SESSION_ARM_TIMEOUT_US (500 * 1000)      /* 500 ms */
+#define SESSION_STOP_TIMEOUT_US (200 * 1000)     /* 200 ms */
+
+/**
  * @brief Typ magistrali aktywnej w sesji.
  */
 typedef enum {
@@ -49,6 +55,10 @@ typedef struct {
     bool     fuzz_mode;
     bool     fuzz_policy_ready;
     hw_protocol_set_fuzz_policy_t fuzz_policy;
+
+    /* Timeout tracking (microseconds since boot) */
+    uint64_t stop_timeout_start;    /* When STOP was received */
+    uint32_t armed_since_us;        /* Timestamp when ARM completed */
 } sniffer_session_t;
 
 /** Globalna instancja sesji. */
@@ -60,8 +70,16 @@ void     session_handle_set_target(const uint8_t *payload);
 void     session_handle_arm(uint16_t session_id);
 void     session_handle_start_capture(void);
 bool     session_handle_set_fuzz_policy(const uint8_t *payload, uint16_t len);
-void     session_handle_start_fuzz(void);
+bool     session_handle_start_fuzz(void);
 uint32_t session_handle_stop(void);
 void     session_handle_disarm(void);
+
+/**
+ * @brief Check for timeout violations (ARM, STOP).
+ * 
+ * Must be called periodically from main loop.
+ * Transitions to FAULT if timeout exceeded.
+ */
+void     session_check_timeouts(void);
 
 #endif

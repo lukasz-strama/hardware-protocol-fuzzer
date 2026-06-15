@@ -16,7 +16,13 @@ set(PICO_BOARD pico CACHE STRING "Board type")
 
 cmake_minimum_required(VERSION 3.13)
 
-set(PICO_SDK_PATH "C:/Users/Lenovo/.pico-sdk/sdk/2.2.0" CACHE PATH "Path to the Raspberry Pi Pico SDK" FORCE)
+if(NOT DEFINED PICO_SDK_PATH)
+    if(WIN32)
+        set(PICO_SDK_PATH "C:/Users/Lenovo/.pico-sdk/sdk/2.2.0" CACHE PATH "Path to the Raspberry Pi Pico SDK")
+    else()
+        set(PICO_SDK_PATH "/home/lukasz/Projects/pico-sdk" CACHE PATH "Path to the Raspberry Pi Pico SDK")
+    endif()
+endif()
 if(NOT DEFINED PICO_SDK_PATH)
     set(PICO_SDK_PATH $ENV{PICO_SDK_PATH} CACHE PATH "Path to the Raspberry Pi Pico SDK")
 endif()
@@ -47,6 +53,11 @@ add_executable(Pico_Sniffer
     firmware/usb/usb_descriptors.c
     firmware/fuzz/fuzz_engine.c
     firmware/fuzz/fuzz_uart_tx.c
+    firmware/fuzz/fuzz_i2c_tx.c
+    firmware/fuzz/fuzz_worker.c
+    firmware/fuzz/fuzzer_corpus.c
+    firmware/fuzz/fuzzer_mutator.c
+    firmware/fuzz/fuzzer_orchestrator.c
     uart_selftest.c
 )
 
@@ -66,6 +77,7 @@ target_include_directories(Pico_Sniffer PRIVATE
 
 target_link_libraries(Pico_Sniffer
     pico_stdlib
+    pico_multicore
     hardware_pio
     hardware_i2c
     hardware_uart

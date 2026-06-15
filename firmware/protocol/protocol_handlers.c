@@ -49,6 +49,9 @@ void handle_get_caps(uint16_t session_id, uint32_t seq) {
     caps->reserved         = 0;
     caps->pin_map_count    = 0;
 
+    /* Transition to CAPABILITIES_READ state */
+    g_session.current_state = HW_PROTOCOL_STATE_CAPABILITIES_READ;
+
     protocol_send_frame(MSG_TYPE_CAPS_RESPONSE,
                         session_id,
                         seq,
@@ -217,7 +220,7 @@ void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
             .context_code = MSG_TYPE_QUEUE_STIMULUS,
             .error_code   = 2,  /* rejected: running */
             .message_len  = 0,
-            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
+            .severity     = HW_PROTOCOL_SEVERITY_WARNING,
             .reserved     = 0
         };
         protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
@@ -230,7 +233,7 @@ void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
             .context_code = MSG_TYPE_QUEUE_STIMULUS,
             .error_code   = 3,  /* queue full or pool exhausted */
             .message_len  = 0,
-            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
+            .severity     = HW_PROTOCOL_SEVERITY_WARNING,
             .reserved     = 0
         };
         protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
@@ -251,7 +254,21 @@ void handle_queue_stimulus(uint16_t session_id, uint32_t seq,
  * @param seq Numer sekwencyjny ramki.
  */
 void handle_start_fuzz(uint16_t session_id, uint32_t seq) {
-    session_handle_start_fuzz();
+    bool ok = session_handle_start_fuzz();
+    
+    if (!ok) {
+        hw_protocol_error_t err = {
+            .context_code = MSG_TYPE_START_FUZZ,
+            .error_code   = 0x0003,  /* Invalid state */
+            .message_len  = 0,
+            .severity     = HW_PROTOCOL_SEVERITY_ERROR,
+            .reserved     = 0
+        };
+        protocol_send_frame(MSG_TYPE_ERROR, session_id, seq,
+                            (const uint8_t *)&err, sizeof(err));
+        return;
+    }
+    
     handle_get_status(session_id, seq);
 }
 

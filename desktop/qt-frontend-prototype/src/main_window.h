@@ -5,6 +5,12 @@
 #include <QMainWindow>
 #include <QVector>
 
+#include "fuzz_orchestrator.h"
+
+class FuzzOrchestrator;
+class FuzzResultsModel;
+
+class QCheckBox;
 class QComboBox;
 class QGroupBox;
 class QLabel;
@@ -12,6 +18,7 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 class QSlider;
+class QTableView;
 class QTableWidget;
 class QTimer;
 class PicoBackend;
@@ -47,6 +54,13 @@ private slots:
     void addDemoFrame();
     void updateFrequencyLabel(int value);
     void applyTraceFilter(const QString &text);
+    void runFuzzSession();
+    void stopFuzzSession();
+    void onFuzzFinished(int total, int ok, int nack, int timeout);
+    void addCorpusEntry();
+    void removeCorpusEntry();
+    void clearCorpus();
+    void clearFuzzResults();
 
 private:
     enum class DeviceState {
@@ -119,6 +133,8 @@ private:
     QTableWidget *traceTable_ = nullptr;
     QTimer *timer_ = nullptr;
     PicoBackend *backend_ = nullptr;
+    FuzzOrchestrator *fuzzOrchestrator_ = nullptr;
+    FuzzResultsModel *fuzzResultsModel_ = nullptr;
 
     QVector<TraceRecord> traceRecords_;
     DeviceState deviceState_ = DeviceState::Detached;
@@ -130,6 +146,28 @@ private:
     int sessionId_ = 0;
     uint8_t supportedModes_ = 0;
     bool fuzzSupported_ = false;
+
+    /* Fuzzer panel widgets */
+    QListWidget *corpusList_ = nullptr;
+    QTableView *fuzzResultsView_ = nullptr;
+    QPushButton *runFuzzButton_ = nullptr;
+    QPushButton *stopFuzzButton_ = nullptr;
+    QPushButton *addCorpusButton_ = nullptr;
+    QPushButton *removeCorpusButton_ = nullptr;
+    QPushButton *clearResultsButton_ = nullptr;
+    QLabel *fuzzStatsLabel_ = nullptr;
+    QCheckBox *bitFlipCheck_ = nullptr;
+    QCheckBox *truncateCheck_ = nullptr;
+    QCheckBox *corruptParityCheck_ = nullptr;
+    QCheckBox *badStopCheck_ = nullptr;
+    QCheckBox *timingDistortCheck_ = nullptr;
+    QCheckBox *i2cSkipAckCheck_ = nullptr;
+    QCheckBox *i2cRepeatedStartCheck_ = nullptr;
+    QCheckBox *i2cClockStretchCheck_ = nullptr;
+    QVector<CorpusEntry> corpusEntries_;
 };
+
+/* Forward-declare CorpusEntry so main_window.h sees it */
+#include "fuzz_orchestrator.h"
 
 #endif

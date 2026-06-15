@@ -15,7 +15,9 @@
 #include "session.h"
 #include "capture_common.h"
 #include "fuzz_engine.h"
+#include "protocol/protocol.h"
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include <string.h>
 
 /** Globalna instancja sesji sniffera. */
@@ -37,6 +39,8 @@ void session_init(void) {
     g_session.active_bus      = TARGET_BUS_NONE;
     g_session.fuzz_mode       = false;
     g_session.fuzz_policy_ready = false;
+    g_session.stop_timeout_start = 0;
+    g_session.armed_since_us = 0;
     fuzz_engine_init();
 }
 
@@ -99,6 +103,7 @@ void session_handle_set_target(const uint8_t *p) {
 void session_handle_arm(uint16_t session_id) {
     if (g_session.current_state != HW_PROTOCOL_STATE_CONFIGURED) return;
     g_session.session_id    = session_id;
+    g_session.armed_since_us = to_us_since_boot(get_absolute_time());
     g_session.current_state = HW_PROTOCOL_STATE_ARMED;
     capture_prepare(&g_session);   
 }
@@ -116,6 +121,7 @@ void session_handle_start_capture(void) {
  * @brief Obsługuje komendę STOP - zatrzymuje capture lub fuzzing.
  *
  * Zatrzymuje capture_stop() i wraca do stanu ARMED.
+ * Records timeout start for STOP_OK response.
  *
  * @return Liczba opróżnionych bajtów (obecnie zawsze 0).
  */
@@ -123,6 +129,8 @@ uint32_t session_handle_stop(void) {
     if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING ||
         g_session.current_state == HW_PROTOCOL_STATE_ARMED) {
         g_session.current_state = HW_PROTOCOL_STATE_STOPPING;
+        g_session.stop_timeout_start = to_us_since_boot(get_absolute_time());
+        
         if (g_session.fuzz_mode) {
             fuzz_engine_stop();
             g_session.fuzz_mode = false;
@@ -159,14 +167,15 @@ bool session_handle_set_fuzz_policy(const uint8_t *payload, uint16_t len) {
  * - polityka fuzz ustawiona,
  * - aktywna magistrala = UART.
  */
-void session_handle_start_fuzz(void) {
-    if (g_session.current_state != HW_PROTOCOL_STATE_ARMED) return;
-    if (!g_session.fuzz_policy_ready) return;
-    if (g_session.active_bus != TARGET_BUS_UART) return;
+bool session_handle_start_fuzz(void) {
+    if (g_session.current_state != HW_PROTOCOL_STATE_ARMED) return false;
+    if (!g_session.fuzz_policy_ready) return false;
+    if (g_session.active_bus == TARGET_BUS_NONE) return false;
 
     g_session.fuzz_mode     = true;
     g_session.current_state = HW_PROTOCOL_STATE_RUNNING;
     fuzz_engine_start();
+    return true;
 }
 
 /**
@@ -181,4 +190,39 @@ void session_handle_disarm(void) {
     g_session.fuzz_policy_ready = false;
     g_session.active_bus        = TARGET_BUS_NONE;
     g_session.current_state     = HW_PROTOCOL_STATE_CONNECTED;
+}
+
+/**
+ * @brief Check for timeout violations (STOP timeout).
+ * 
+ * Called periodically from main loop. If STOPPING state exceeds
+ * SESSION_STOP_TIMEOUT_US, transitions to FAULT and sends ERROR.
+ */
+void session_check_timeouts(void) {
+    if (g_session.current_state != HW_PROTOCOL_STATE_STOPPING) {
+        return;  /* No timeout to check */
+    }
+    
+    uint64_t now_us = to_us_since_boot(get_absolute_time());
+    uint64_t elapsed = now_us - g_session.stop_timeout_start;
+    
+    if (elapsed > SESSION_STOP_TIMEOUT_US) {
+        /* STOP timeout exceeded - transition to FAULT */
+        g_session.current_state = HW_PROTOCOL_STATE_FAULT;
+        
+        /* Send ERROR frame */
+        hw_protocol_error_t err = {
+            .context_code = MSG_TYPE_STOP,
+            .error_code = 0x0001,     /* Timeout */
+            .message_len = 0,
+            .severity = HW_PROTOCOL_SEVERITY_ERROR,
+            .reserved = 0
+        };
+        
+        protocol_send_frame(MSG_TYPE_ERROR,
+                          g_session.session_id,
+                          g_session.status.session_id,  /* Use status sequence */
+                          (const uint8_t *)&err,
+                          sizeof(err));
+    }
 }

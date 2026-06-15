@@ -101,4 +101,12 @@ void protocol_parser_init(protocol_parser_t *parser);
  */
 bool protocol_parse_byte(protocol_parser_t *parser, uint8_t byte, hw_protocol_frame_header_t *out_header, uint8_t *out_payload);
 
+/**
+ * @brief Main protocol task.
+ *
+ * Called periodically from main loop. Currently just pumps USB transport.
+ * Can be extended for additional protocol-level processing in future.
+ */
+void protocol_task(void);
+
 #endif

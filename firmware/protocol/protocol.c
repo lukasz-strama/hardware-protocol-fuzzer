@@ -191,3 +191,17 @@ bool protocol_parse_byte(
 
     return false;
 }
+
+/**
+ * @brief Main protocol task.
+ *
+ * Called periodically from main loop. Currently just ensures USB transport
+ * is serviced. Can be extended for protocol-level processing in future.
+ *
+ * @note This is called from Core 0 main loop, not from ISR context.
+ */
+void protocol_task(void) {
+    /* USB transport handles all protocol parsing via ISR */
+    /* This stub can be extended if additional protocol-level */
+    /* processing is needed in the future */
+}

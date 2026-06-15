@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "pico/stdlib.h"
+#include "pico/multicore.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
@@ -9,6 +10,7 @@
 #include "session.h"
 #include "capture_common.h"
 #include "fuzz_engine.h"
+#include "fuzz/fuzz_worker.h"
 #include "protocol/protocol.h" 
 
 // 1 - test i2c master generator mode, 0 - normal operation without i2c generator
@@ -30,6 +32,9 @@ int main(void) {
     session_init();
     usb_transport_init();
 
+    /* Launch Core 1 fuzz worker */
+    multicore_launch_core1(fuzz_worker_task);
+
 #if I2C_SELFTEST_MODE
     init_master_i2c_generator();
     uint32_t last_tx_time = time_us_32();
@@ -39,15 +44,13 @@ int main(void) {
     while (1) {
         usb_transport_task();
         protocol_task();
+        
+        /* Check for timeout violations */
+        session_check_timeouts();
 
-        if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING) {
-            if (g_session.fuzz_mode) {
-                fuzz_engine_task();
-                capture_task();  
-            } else {
-                capture_task();
-            }
-        } else if (g_session.current_state == HW_PROTOCOL_STATE_ARMED) {
+        /* Core 0: Capture polling only (fuzz runs on Core 1) */
+        if (g_session.current_state == HW_PROTOCOL_STATE_RUNNING ||
+            g_session.current_state == HW_PROTOCOL_STATE_ARMED) {
             capture_task();
         }
 
@@ -57,6 +60,9 @@ int main(void) {
             i2c_write_blocking(i2c1, 0x42, test_data, sizeof(test_data), false);
         }
 #endif
+
+        /* Brief sleep to prevent busy-loop */
+        sleep_us(10);
     }
 
     return 0;

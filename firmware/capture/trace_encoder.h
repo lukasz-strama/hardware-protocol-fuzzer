@@ -9,6 +9,8 @@
 #ifndef TRACE_ENCODER_H
 #define TRACE_ENCODER_H
 
+#include <stdint.h>
+
 /** Źródło zdarzenia: magistrala I2C. */
 #define TRACE_SOURCE_I2C 0
 /** Źródło zdarzenia: magistrala UART. */

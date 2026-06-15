@@ -11,27 +11,37 @@
  *
  * Transport działa w trybie strumieniowym - każde odebrane bajty są
  * przekazywane do parsera protokołu.
+ * 
+ * Thread safety: Parser jest chroniony spin lock'iem dla synchronizacji
+ * między USB ISR i główną pętlą.
  */
 #include "usb_transport.h"
 #include "protocol.h"
 #include "protocol_layout.h"
 #include "protocol_handlers_dispatcher.h"
 #include "tusb.h"
+#include "pico/sync.h"
 #include <stdint.h>
 
 static protocol_parser_t g_parser;
+static spin_lock_t *g_parser_lock = NULL;
 
 /**
  * @brief Inicjalizuje warstwę transportową USB.
  *
  * Funkcja:
  * - resetuje parser protokołu,
+ * - inicjalizuje spin lock dla parsera,
  * - inicjalizuje stos TinyUSB.
  *
  * @note Musi być wywołana przed użyciem transportu.
  */
 void usb_transport_init(void) {
     protocol_parser_init(&g_parser);
+    
+    /* Initialize spin lock for parser thread safety */
+    g_parser_lock = spin_lock_init(spin_lock_claim_unused(true));
+    
     tusb_init();
 }
 
@@ -75,7 +85,7 @@ void usb_transport_send(const uint8_t *data, size_t len) {
 /**
  * @brief Przetwarza pojedynczy bajt odebrany z USB.
  *
- * Bajt jest przekazywany do parsera protokołu.  
+ * Bajt jest przekazywany do parsera protokołu (chronionego spin lock'iem).  
  * Jeśli parser zdekoduje kompletną ramkę:
  * - wywoływany jest dispatcher protokołu (protocol_handle_frame).
  *
@@ -85,7 +95,16 @@ void usb_transport_on_rx_byte(uint8_t byte) {
     hw_protocol_frame_header_t header;
     uint8_t payload[HW_PROTOCOL_MAX_TRACE_CHUNK];
 
-    if (protocol_parse_byte(&g_parser, byte, &header, payload)) {
+    /* Acquire lock to protect parser from concurrent access */
+    uint32_t save = spin_lock_blocking(g_parser_lock);
+    
+    bool frame_complete = protocol_parse_byte(&g_parser, byte, &header, payload);
+    
+    /* Release lock */
+    spin_unlock(g_parser_lock, save);
+    
+    /* Call dispatcher outside of critical section */
+    if (frame_complete) {
         protocol_handle_frame(&header, payload);
     }
 }

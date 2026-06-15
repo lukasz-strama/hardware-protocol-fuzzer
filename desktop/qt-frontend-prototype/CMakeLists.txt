@@ -12,6 +12,10 @@ qt_add_executable(HardwareProtocolFuzzerDesktop
     resources.qrc
     src/backend_bridge.cpp
     src/backend_bridge.h
+    src/fuzz_orchestrator.cpp
+    src/fuzz_orchestrator.h
+    src/fuzz_results_model.cpp
+    src/fuzz_results_model.h
     src/main.cpp
     src/main_window.cpp
     src/main_window.h

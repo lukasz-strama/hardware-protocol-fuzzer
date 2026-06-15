@@ -208,7 +208,11 @@ pico_result_t session_start_capture(pico_session_t *s)
     pico_result_t r = require_state(s, HW_PROTOCOL_STATE_ARMED);
     if (r) return r;
     printf("[session] → START_CAPTURE\n");
-    return send_no_payload(s, MSG_START_CAPTURE);
+    r = send_no_payload(s, MSG_START_CAPTURE);
+    if (r == PICO_OK) {
+        s->state = HW_PROTOCOL_STATE_RUNNING;
+    }
+    return r;
 }
 
 pico_result_t session_start_fuzz(pico_session_t *s)
@@ -216,13 +220,18 @@ pico_result_t session_start_fuzz(pico_session_t *s)
     pico_result_t r = require_state(s, HW_PROTOCOL_STATE_ARMED);
     if (r) return r;
     printf("[session] → START_FUZZ\n");
-    return send_no_payload(s, MSG_START_FUZZ);
+    r = send_no_payload(s, MSG_START_FUZZ);
+    if (r == PICO_OK) {
+        s->state = HW_PROTOCOL_STATE_RUNNING;
+    }
+    return r;
 }
 
 pico_result_t session_stop(pico_session_t *s)
 {
-    if (s->state != HW_PROTOCOL_STATE_RUNNING) {
-        fprintf(stderr, "[session] STOP: not Running (%s)\n",
+    if (s->state != HW_PROTOCOL_STATE_RUNNING &&
+        s->state != HW_PROTOCOL_STATE_ARMED) {
+        fprintf(stderr, "[session] STOP: not Running or Armed (%s)\n",
                 state_name(s->state));
         return PICO_ERR_STATE;
     }
@@ -366,7 +375,7 @@ static void handle_error(pico_session_t *s, const uint8_t *payload, uint16_t len
     }
     fprintf(stderr, "\n");
 
-    if (sev >= HW_PROTOCOL_SEVERITY_ERROR)
+    if (sev >= HW_PROTOCOL_SEVERITY_FATAL)
         s->state = HW_PROTOCOL_STATE_FAULT;
 }
 

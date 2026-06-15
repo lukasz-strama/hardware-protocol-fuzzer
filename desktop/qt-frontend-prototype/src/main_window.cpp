@@ -1,5 +1,7 @@
 #include "main_window.h"
 #include "backend_bridge.h"
+#include "fuzz_orchestrator.h"
+#include "fuzz_results_model.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -28,6 +30,8 @@
 #include <QTableWidgetItem>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QCheckBox>
+#include <QTableView>
 
 namespace {
 
@@ -119,8 +123,11 @@ QLabel *smallLabel(const QString &text)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       timer_(new QTimer(this)),
-      backend_(new PicoBackend(this))
+      backend_(new PicoBackend(this)),
+      fuzzResultsModel_(new FuzzResultsModel(this))
 {
+    fuzzOrchestrator_ = new FuzzOrchestrator(backend_, fuzzResultsModel_, this);
+
     setWindowTitle("Hardware Protocol Fuzzer - Qt Desktop Prototype");
     setCentralWidget(buildCentralWidget());
     statusBar()->showMessage("Real backend: USB CDC serial session to Pico");
@@ -136,6 +143,15 @@ MainWindow::MainWindow(QWidget *parent)
             backend_->pump();
         }
     });
+
+    connect(fuzzOrchestrator_, &FuzzOrchestrator::logMessage, this, [this](const QString &msg) {
+        addSessionLog(msg);
+    });
+    connect(fuzzOrchestrator_, &FuzzOrchestrator::sessionStarted, this, [this]() {
+        setDeviceState(DeviceState::Fuzzing);
+    });
+    connect(fuzzOrchestrator_, &FuzzOrchestrator::sessionStopped,
+            this, &MainWindow::onFuzzFinished);
 
     updateStatus();
 }
@@ -305,24 +321,48 @@ QWidget *MainWindow::buildCentralWidget()
         QListView#comboPopup::item:selected:hover {
             background: #c7ddff;
         }
+        QScrollBar:vertical,
+        QScrollBar:horizontal {
+            background: #f8fafc;
+        }
         QScrollBar:vertical {
             width: 10px;
             margin: 4px 2px 4px 0;
-            background: transparent;
+            background: #f8fafc;
+        }
+        QScrollBar:horizontal {
+            height: 10px;
+            margin: 0 4px 2px 4px;
+            background: #f8fafc;
         }
         QScrollBar::handle:vertical {
             min-height: 28px;
             border-radius: 5px;
             background: #c7d0dd;
+            margin: 2px 0;
         }
         QScrollBar::handle:vertical:hover {
+            background: #98a2b3;
+        }
+        QScrollBar::handle:horizontal {
+            min-width: 28px;
+            border-radius: 5px;
+            background: #c7d0dd;
+            margin: 0 2px;
+        }
+        QScrollBar::handle:horizontal:hover {
             background: #98a2b3;
         }
         QScrollBar::add-line:vertical,
         QScrollBar::sub-line:vertical,
         QScrollBar::add-page:vertical,
-        QScrollBar::sub-page:vertical {
+        QScrollBar::sub-page:vertical,
+        QScrollBar::add-line:horizontal,
+        QScrollBar::sub-line:horizontal,
+        QScrollBar::add-page:horizontal,
+        QScrollBar::sub-page:horizontal {
             height: 0;
+            width: 0;
             background: transparent;
         }
         QPushButton {
@@ -337,7 +377,8 @@ QWidget *MainWindow::buildCentralWidget()
             border-color: #2563eb;
             color: #2563eb;
         }
-        QTableWidget {
+        QTableWidget,
+        QTableView {
             background: #ffffff;
             color: #1d2430;
             border: 1px solid #d7dee8;
@@ -346,14 +387,38 @@ QWidget *MainWindow::buildCentralWidget()
             alternate-background-color: #f8fafc;
             selection-background-color: #dbeafe;
             selection-color: #1d2430;
+            show-decoration-selected: 1;
+            margin: 0;
+            padding: 0;
+        }
+        QTableWidget::item,
+        QTableView::item {
+            padding: 2px 4px;
+            border: none;
+            margin: 0;
+        }
+        QTableView::indicator {
+            width: 12px;
+            height: 12px;
+        }
+        QHeaderView {
+            background: #f3f6fa;
         }
         QHeaderView::section {
             background: #f3f6fa;
             color: #475467;
-            border: 0;
+            border: none;
+            border-right: 1px solid #d7dee8;
             border-bottom: 1px solid #d7dee8;
-            padding: 6px;
+            padding: 6px 4px;
             font-weight: 800;
+            text-align: left;
+        }
+        QHeaderView::section:last {
+            border-right: none;
+        }
+        QHeaderView::section:hover {
+            background: #eef1f5;
         }
         QListWidget#sessionLog {
             min-height: 92px;
@@ -475,49 +540,140 @@ QGroupBox *MainWindow::buildFuzzerPanel()
 {
     auto *panel = new QGroupBox("Fuzzer Control");
     auto *layout = new QVBoxLayout(panel);
-    layout->setSpacing(9);
+    layout->setSpacing(12);
+    layout->setContentsMargins(12, 12, 12, 12);
 
+    /* ── Bus & Mode ──────────────────────────────────────────── */
     attackCombo_ = new DropdownComboBox;
-    attackCombo_->addItems({"Address sweep", "Malformed length", "Repeated START", "Random bytes"});
+    attackCombo_->addItems({"Raw bytes", "Address sweep", "Boundary values", "Random bytes"});
     configureComboBox(attackCombo_);
 
     selectionCombo_ = new DropdownComboBox;
     selectionCombo_->addItems({"Sequential", "Random", "Corpus-guided"});
     configureComboBox(selectionCombo_);
 
+    budgetEdit_ = new QLineEdit("5000");
     stimulusEdit_ = new QLineEdit("A0 00 FF 13 37");
-    repeatEdit_ = new QLineEdit("25");
-    budgetEdit_ = new QLineEdit("5000 ms");
 
-    frequencySlider_ = new QSlider(Qt::Horizontal);
-    frequencySlider_->setRange(1, 100);
-    frequencySlider_->setValue(10);
-    frequencyValueLabel_ = new QLabel("10 Hz");
+    layout->addWidget(formRow("Attack", attackCombo_));
+    layout->addWidget(formRow("Selection", selectionCombo_));
+    layout->addWidget(formRow("Budget ms", budgetEdit_));
+
+    /* ── Separator ────────────────────────────────────────────── */
+    auto *sep1 = new QFrame;
+    sep1->setFrameShape(QFrame::HLine);
+    sep1->setFrameShadow(QFrame::Sunken);
+    sep1->setStyleSheet("color: #d7dee8;");
+    layout->addWidget(sep1);
+
+    /* ── Policy flags (checkboxes) ────────────────────────────── */
+    auto *flagsLabel = smallLabel("Mutation & Error Injection");
+    layout->addWidget(flagsLabel);
+
+    bitFlipCheck_          = new QCheckBox("Bit flip");
+    truncateCheck_         = new QCheckBox("Truncate");
+    corruptParityCheck_    = new QCheckBox("Corrupt parity (UART)");
+    badStopCheck_          = new QCheckBox("Bad stop bit (UART)");
+    timingDistortCheck_    = new QCheckBox("Timing distort (UART)");
+    i2cSkipAckCheck_       = new QCheckBox("Skip ACK (I2C)");
+    i2cRepeatedStartCheck_ = new QCheckBox("Repeated START (I2C)");
+    i2cClockStretchCheck_  = new QCheckBox("Clock stretch (I2C)");
+
+    auto *flagsGrid = new QGridLayout;
+    flagsGrid->setSpacing(6);
+    flagsGrid->setContentsMargins(0, 0, 0, 0);
+    flagsGrid->addWidget(bitFlipCheck_, 0, 0);
+    flagsGrid->addWidget(truncateCheck_, 0, 1);
+    flagsGrid->addWidget(corruptParityCheck_, 1, 0);
+    flagsGrid->addWidget(badStopCheck_, 1, 1);
+    flagsGrid->addWidget(timingDistortCheck_, 2, 0);
+    flagsGrid->addWidget(i2cSkipAckCheck_, 2, 1);
+    flagsGrid->addWidget(i2cRepeatedStartCheck_, 3, 0);
+    flagsGrid->addWidget(i2cClockStretchCheck_, 3, 1);
+    layout->addLayout(flagsGrid);
+
+    /* ── Separator ────────────────────────────────────────────── */
+    auto *sep2 = new QFrame;
+    sep2->setFrameShape(QFrame::HLine);
+    sep2->setFrameShadow(QFrame::Sunken);
+    sep2->setStyleSheet("color: #d7dee8;");
+    layout->addWidget(sep2);
+
+    /* ── Corpus ───────────────────────────────────────────────── */
+    layout->addWidget(smallLabel("Corpus (hex bytes per entry)"));
+    layout->addWidget(formRow("Stimulus", stimulusEdit_));
+
+    auto *corpusButtons = new QHBoxLayout;
+    addCorpusButton_ = new QPushButton("Add");
+    removeCorpusButton_ = new QPushButton("Remove");
+    corpusButtons->addWidget(addCorpusButton_);
+    corpusButtons->addWidget(removeCorpusButton_);
+    layout->addLayout(corpusButtons);
+
+    corpusList_ = new QListWidget;
+    corpusList_->setObjectName("sessionLog");
+    corpusList_->setMaximumHeight(80);
+    layout->addWidget(corpusList_);
+
+    /* ── Separator ────────────────────────────────────────────── */
+    auto *sep3 = new QFrame;
+    sep3->setFrameShape(QFrame::HLine);
+    sep3->setFrameShadow(QFrame::Sunken);
+    sep3->setStyleSheet("color: #d7dee8;");
+    layout->addWidget(sep3);
+
+    /* ── Run/Stop buttons ────────────────────────────────────── */
+    runFuzzButton_ = new QPushButton("▶ Run Fuzz");
+    stopFuzzButton_ = new QPushButton("■ Stop Fuzz");
+    clearResultsButton_ = new QPushButton("Clear Results");
+    auto *runStopLayout = new QHBoxLayout;
+    runStopLayout->setSpacing(8);
+    runStopLayout->addWidget(runFuzzButton_);
+    runStopLayout->addWidget(stopFuzzButton_);
+    runStopLayout->addWidget(clearResultsButton_);
+    layout->addLayout(runStopLayout);
+
+    /* ── Results table ────────────────────────────────────────── */
+    layout->addWidget(smallLabel("Fuzz Results"));
+    fuzzResultsView_ = new QTableView;
+    fuzzResultsView_->setModel(fuzzResultsModel_);
+    fuzzResultsView_->setAlternatingRowColors(true);
+    fuzzResultsView_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    fuzzResultsView_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    fuzzResultsView_->verticalHeader()->setVisible(false);
+    fuzzResultsView_->verticalHeader()->setDefaultSectionSize(24);
+    fuzzResultsView_->horizontalHeader()->setStretchLastSection(true);
+    fuzzResultsView_->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    fuzzResultsView_->setMinimumHeight(100);
+    fuzzResultsView_->setShowGrid(true);
+    fuzzResultsView_->setGridStyle(Qt::SolidLine);
+    layout->addWidget(fuzzResultsView_, 1);
+
+    /* ── Separator ────────────────────────────────────────────── */
+    auto *sep4 = new QFrame;
+    sep4->setFrameShape(QFrame::HLine);
+    sep4->setFrameShadow(QFrame::Sunken);
+    sep4->setStyleSheet("color: #d7dee8;");
+    layout->addWidget(sep4);
+
+    /* ── Stats ────────────────────────────────────────────────── */
+    fuzzStatsLabel_ = smallLabel("Total: 0  |  OK: 0  |  NACK: 0  |  Timeout: 0");
+    layout->addWidget(fuzzStatsLabel_);
 
     queueLabel_ = smallLabel("Queued: 0");
     rxOverrunsLabel_ = smallLabel("RX overruns: 0");
     txUnderrunsLabel_ = smallLabel("TX underruns: 0");
-
-    queueButton_ = new QPushButton("Queue Stimulus");
-    fuzzButton_ = new QPushButton("Start Fuzz");
-
-    layout->addWidget(formRow("Attack", attackCombo_));
-    layout->addWidget(formRow("Selection", selectionCombo_));
-    layout->addWidget(formRow("Stimulus", stimulusEdit_));
-    layout->addWidget(formRow("Repeats", repeatEdit_));
-    layout->addWidget(formRow("Budget", budgetEdit_));
-    layout->addWidget(formRow("Frequency", frequencySlider_));
-    layout->addWidget(formRow("Rate", frequencyValueLabel_));
-    layout->addWidget(buttonRow({queueButton_, fuzzButton_}));
-    layout->addStretch(1);
     layout->addWidget(queueLabel_);
     layout->addWidget(rxOverrunsLabel_);
     layout->addWidget(txUnderrunsLabel_);
-    layout->addWidget(smallLabel("Limits: max_pending <= 32, pending_bytes <= 4096"));
+    layout->addWidget(smallLabel("Limits: max_pending ≤ 32, pending_bytes ≤ 4096"));
 
-    connect(queueButton_, &QPushButton::clicked, this, &MainWindow::queueStimulus);
-    connect(fuzzButton_, &QPushButton::clicked, this, &MainWindow::startFuzz);
-    connect(frequencySlider_, &QSlider::valueChanged, this, &MainWindow::updateFrequencyLabel);
+    /* ── Connections ──────────────────────────────────────────── */
+    connect(addCorpusButton_, &QPushButton::clicked, this, &MainWindow::addCorpusEntry);
+    connect(removeCorpusButton_, &QPushButton::clicked, this, &MainWindow::removeCorpusEntry);
+    connect(runFuzzButton_, &QPushButton::clicked, this, &MainWindow::runFuzzSession);
+    connect(stopFuzzButton_, &QPushButton::clicked, this, &MainWindow::stopFuzzSession);
+    connect(clearResultsButton_, &QPushButton::clicked, this, &MainWindow::clearFuzzResults);
 
     return panel;
 }
@@ -762,11 +918,20 @@ void MainWindow::updateControlAvailability()
     if (disarmButton_) {
         disarmButton_->setEnabled(connected || capabilitiesRead || armed);
     }
-    if (queueButton_) {
-        queueButton_->setEnabled(armed && fuzzSupported_);
+    if (runFuzzButton_) {
+        runFuzzButton_->setEnabled(armed && fuzzSupported_);
     }
-    if (fuzzButton_) {
-        fuzzButton_->setEnabled(armed && fuzzSupported_);
+    if (stopFuzzButton_) {
+        stopFuzzButton_->setEnabled(deviceState_ == DeviceState::Fuzzing);
+    }
+    if (addCorpusButton_) {
+        addCorpusButton_->setEnabled(!running);
+    }
+    if (removeCorpusButton_) {
+        removeCorpusButton_->setEnabled(!running);
+    }
+    if (clearResultsButton_) {
+        clearResultsButton_->setEnabled(!running);
     }
     if (addDemoFrameButton_) {
         addDemoFrameButton_->setEnabled(running);
@@ -774,8 +939,7 @@ void MainWindow::updateControlAvailability()
 
     const QList<QWidget *> configWidgets = {
         protocolCombo_, portCombo_, baudrateCombo_, parityCombo_, pinAEdit_, pinBEdit_, vtargetCombo_,
-        attackCombo_, selectionCombo_, stimulusEdit_, repeatEdit_, budgetEdit_,
-        frequencySlider_
+        attackCombo_, selectionCombo_, stimulusEdit_, budgetEdit_
     };
     for (auto *widget : configWidgets) {
         if (widget) {
@@ -1017,6 +1181,10 @@ void MainWindow::connectDevice()
 {
     stopTimer();
 
+    /* Reset fuzz state from any prior session */
+    fuzzSupported_ = false;
+    supportedModes_ = 0;
+
     QString errorMessage;
     if (!backend_->openPort(portCombo_->currentText(), baudrateCombo_->currentText().toInt(), &errorMessage)) {
         addSessionLog(QString("Open failed: %1").arg(errorMessage));
@@ -1114,6 +1282,8 @@ void MainWindow::disarmDevice()
 
     stopTimer();
     queuedStimuli_ = 0;
+    fuzzSupported_ = false;
+    supportedModes_ = 0;
     setDeviceState(DeviceState::Disarmed);
     addSessionLog("DISARM, pins=HIGH-Z");
     backend_->closePort();
@@ -1121,47 +1291,111 @@ void MainWindow::disarmDevice()
 
 void MainWindow::queueStimulus()
 {
-    if (!fuzzSupported_) {
-        addSessionLog("QUEUE_STIMULUS skipped: firmware does not advertise fuzz support yet");
-        return;
-    }
-
-    const QByteArray bytes = stimulusEdit_->text().toLatin1();
-    if (backend_->sendQueueStimulus(static_cast<uint32_t>(sequence_ + 1),
-                                    reinterpret_cast<const uint8_t *>(bytes.constData()),
-                                    static_cast<uint16_t>(bytes.size()),
-                                    HW_PROTOCOL_STIMULUS_INLINE_PAYLOAD,
-                                    0) != PICO_OK) {
-        addSessionLog("QUEUE_STIMULUS failed");
-        return;
-    }
-
-    queuedStimuli_ = qMin(32, queuedStimuli_ + 1);
-    if (deviceState_ != DeviceState::Capturing && deviceState_ != DeviceState::Fuzzing) {
-        setDeviceState(DeviceState::Armed);
-    }
-    addSessionLog(QString("QUEUE_STIMULUS, %1, bytes=%2")
-        .arg(attackCombo_->currentText(), stimulusEdit_->text()));
+    /* Legacy — redirects to addCorpusEntry */
+    addCorpusEntry();
 }
 
 void MainWindow::startFuzz()
 {
-    if (!fuzzSupported_) {
-        addSessionLog("START_FUZZ skipped: firmware does not advertise fuzz support yet");
+    /* Legacy — redirects to runFuzzSession */
+    runFuzzSession();
+}
+
+void MainWindow::addCorpusEntry()
+{
+    const QString hex = stimulusEdit_->text().trimmed();
+    if (hex.isEmpty()) return;
+
+    /* Parse hex string into bytes */
+    QByteArray bytes;
+    const QStringList tokens = hex.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    for (const auto &tok : tokens) {
+        bool ok;
+        uint val = tok.toUInt(&ok, 16);
+        if (!ok) continue;
+        bytes.append(static_cast<char>(val & 0xFF));
+    }
+    if (bytes.isEmpty()) return;
+
+    static int nextId = 1;
+    CorpusEntry entry;
+    entry.id = nextId++;
+    entry.data = bytes;
+    entry.label = hex.toUpper();
+    corpusEntries_.append(entry);
+
+    corpusList_->addItem(QString("#%1: %2 (%3 B)")
+        .arg(entry.id).arg(entry.label).arg(bytes.size()));
+    addSessionLog(QString("Corpus: added #%1, %2 bytes").arg(entry.id).arg(bytes.size()));
+}
+
+void MainWindow::removeCorpusEntry()
+{
+    int row = corpusList_->currentRow();
+    if (row < 0 || row >= corpusEntries_.size()) return;
+
+    corpusEntries_.removeAt(row);
+    delete corpusList_->takeItem(row);
+    addSessionLog(QString("Corpus: removed entry at row %1").arg(row));
+}
+
+void MainWindow::clearCorpus()
+{
+    corpusEntries_.clear();
+    corpusList_->clear();
+    addSessionLog("Corpus: cleared");
+}
+
+void MainWindow::runFuzzSession()
+{
+    if (corpusEntries_.isEmpty()) {
+        addCorpusEntry();  /* auto-add from stimulus field */
+    }
+    if (corpusEntries_.isEmpty()) {
+        addSessionLog("[fuzz] No corpus entries to fuzz");
         return;
     }
 
-    if (queuedStimuli_ == 0) {
-        queueStimulus();
-    }
-    if (backend_->sendStartFuzz() != PICO_OK) {
-        addSessionLog("START_FUZZ failed");
-        return;
-    }
+    /* Build policy flags from checkboxes */
+    uint8_t policyFlags = 0;
+    if (bitFlipCheck_ && bitFlipCheck_->isChecked())           policyFlags |= (1u << 0);
+    if (truncateCheck_ && truncateCheck_->isChecked())         policyFlags |= (1u << 1);
+    if (corruptParityCheck_ && corruptParityCheck_->isChecked()) policyFlags |= (1u << 2);
+    if (badStopCheck_ && badStopCheck_->isChecked())           policyFlags |= (1u << 3);
+    if (timingDistortCheck_ && timingDistortCheck_->isChecked()) policyFlags |= (1u << 4);
+    if (i2cSkipAckCheck_ && i2cSkipAckCheck_->isChecked())     policyFlags |= (1u << 5);
+    if (i2cRepeatedStartCheck_ && i2cRepeatedStartCheck_->isChecked()) policyFlags |= (1u << 6);
+    if (i2cClockStretchCheck_ && i2cClockStretchCheck_->isChecked())   policyFlags |= (1u << 7);
 
-    setDeviceState(DeviceState::Fuzzing);
-    addSessionLog("START_FUZZ, FUZZ_TX events will be correlated with trace");
-    startTimerForMode("fuzz");
+    uint8_t busType = (protocolCombo_->currentText() == "UART") ? 1 : 0;
+    uint8_t selMode = static_cast<uint8_t>(selectionCombo_->currentIndex());
+    uint32_t budgetMs = budgetEdit_->text().toUInt();
+
+    fuzzOrchestrator_->startSession(
+        corpusEntries_, busType, selMode, 0 /* once */, policyFlags, budgetMs);
+}
+
+void MainWindow::stopFuzzSession()
+{
+    fuzzOrchestrator_->stopSession();
+    setDeviceState(DeviceState::Armed);
+}
+
+void MainWindow::onFuzzFinished(int total, int ok, int nack, int timeout)
+{
+    setDeviceState(DeviceState::Armed);
+    if (fuzzStatsLabel_) {
+        fuzzStatsLabel_->setText(QString("Total: %1  |  OK: %2  |  NACK: %3  |  Timeout: %4")
+            .arg(total).arg(ok).arg(nack).arg(timeout));
+    }
+    addSessionLog(QString("Fuzz session complete: %1 total, %2 OK, %3 NACK, %4 timeout")
+        .arg(total).arg(ok).arg(nack).arg(timeout));
+}
+
+void MainWindow::clearFuzzResults()
+{
+    if (fuzzResultsModel_) fuzzResultsModel_->clear();
+    if (fuzzStatsLabel_) fuzzStatsLabel_->setText("Total: 0  |  OK: 0  |  NACK: 0  |  Timeout: 0");
 }
 
 void MainWindow::clearTrace()
