@@ -1,0 +1,30 @@
+# Doxygen configuration for Pico_Sniffer
+
+PROJECT_NAME           = "Pico_Sniffer"
+PROJECT_NUMBER         = ""
+PROJECT_BRIEF          = "Sniffer/probe dla protokołów UART/I2C (Raspberry Pi Pico)"
+OUTPUT_DIRECTORY       = docs/doxygen_output
+CREATE_SUBDIRS         = YES
+OUTPUT_LANGUAGE        = Polish
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = 
+INPUT                  = firmware docs main.c uart_selftest.c frame.c transport.c session.c diag.c csv_logger.c pico_host.h protocol_layout.h
+RECURSIVE              = YES
+FILE_PATTERNS          = *.c *.h *.hpp *.cpp *.md
+USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+GENERATE_TREEVIEW      = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+QUIET                  = NO

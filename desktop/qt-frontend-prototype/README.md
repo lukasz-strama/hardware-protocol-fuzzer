@@ -78,16 +78,16 @@ Panel `Captured Frames` pokazuje live rekordy trace z firmware. Kolumny oznaczaj
 - `Data`: dane w hex,
 - `Decoded`: opis zdekodowanego zdarzenia.
 
-Panel `Fuzzer Control` służy do ustawienia polityki fuzzera, ale przy obecnym firmware pozostaje częściowo nieaktywny, bo firmware jeszcze nie wystawia `START_FUZZ` i `QUEUE_STIMULUS`:
+Panel `Fuzzing` jest teraz celowo prosty i opisuje tylko to, co desktop faktycznie obsługuje:
 
-- `Attack`: typ scenariusza,
-- `Selection`: sposob wyboru bodzcow,
-- `Stimulus`: bajty bodzca,
-- `Repeats`, `Budget`, `Frequency`: podstawowe limity wykonania,
-- `Queue Stimulus`: dodaje bodziec do kolejki,
-- `Start Fuzz`: uruchamia symulowany fuzzing.
+- `Mode`: `Sequential once` albo `Random repeat`,
+- `Budget ms`: limit czasu sesji,
+- `Stimulus`: źródłowy ciąg hex dla korpusu,
+- `Bit flip` i `Truncate`: jedyne dwie mutacje wystawione w UI,
+- `Run Fuzz` / `Stop Fuzz`: uruchomienie i zatrzymanie sesji,
+- `Fuzz Results`: wynikowe dopasowanie `FUZZ_TX` do odpowiedzi.
 
-Jeśli chcesz tylko capture UART, po `Get Caps` zobaczysz, że fuzzing jest wyłączony, dopóki firmware nie doda obsługi tych komend.
+UI nie pokazuje już pseudo-opcji dla I2C fuzzingu. Desktop uruchamia obecnie tylko UART-owy fuzzing, a capture I2C/UART zostaje bez zmian w panelu przechwytywania.
 
 ## Blokowanie przyciskow wedlug stanu
 

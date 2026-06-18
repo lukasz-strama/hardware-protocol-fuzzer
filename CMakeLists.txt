@@ -94,3 +94,16 @@ pico_enable_stdio_usb(Pico_Sniffer 0)
 pico_enable_stdio_uart(Pico_Sniffer 0)   # debug na GP0/GP1
 
 pico_add_extra_outputs(Pico_Sniffer)
+
+# --- Doxygen documentation target ---
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    set(DOXYGEN_CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)
+    add_custom_target(doc
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_CONFIG_FILE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM)
+else()
+    message(STATUS "Doxygen not found. 'make doc' target will be unavailable.")
+endif()
